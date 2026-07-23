@@ -356,6 +356,14 @@ def init_db():
             """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_workspace ON learning_insights(workspace_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_learning_type ON learning_insights(insight_type, status)")
+
+        try:
+            from database.migrations.content_strategy_center import up as migrate_content_strategy_center
+            migrate_content_strategy_center(conn=conn, engine=DB_ENGINE)
+        except Exception as e:
+            logger.error(f"Khong the migrate AI Content Strategy Center: {e}", exc_info=True)
+            raise
+
         ensure_columns(cur, "learning_insights", {
             "company_id": "INTEGER REFERENCES companies(id) ON DELETE CASCADE",
             "strategy_id": "INTEGER REFERENCES content_strategies(id) ON DELETE SET NULL",
