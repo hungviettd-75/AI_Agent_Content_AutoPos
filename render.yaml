@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: apex-ai-logistics
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app/main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: DB_ENGINE
+        value: sqlite
+      - key: DB_PATH
+        value: content_manager.db
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_EXPIRE_HOURS
+        value: "24"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FB_PAGE_ID
+        sync: false
+      - key: FB_ACCESS_TOKEN
+        sync: false
+      - key: ZALO_OA_ID
+        sync: false
+      - key: ZALO_ACCESS_TOKEN
+        sync: false
+      - key: LINKEDIN_AUTHOR_URN
+        sync: false
+      - key: LINKEDIN_ACCESS_TOKEN
+        sync: false
