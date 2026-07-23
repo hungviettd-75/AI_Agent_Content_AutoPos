@@ -1,0 +1,1466 @@
+import streamlit as st
+import google.generativeai as genai
+import pandas as pd
+import sqlite3
+import os
+import json
+import requests
+from datetime import datetime
+from dotenv import load_dotenv
+
+# --- Cáº¤U HÃŒNH ---
+st.set_page_config(page_title="AI-Agent Marketing", layout="wide", page_icon="ðŸš€")
+
+# INJECT CUSTOM CSS CHO GIAO DIá»†N CHUYÃŠN NGHIá»†P
+st.markdown("""
+<style>
+    /* Background hÃ¬nh ná»n chuyÃªn nghiá»‡p */
+    .stApp {
+        background-image: url("https://images.unsplash.com/photo-1557683311-eac922347aa1?q=80&w=2029&auto=format&fit=crop");
+        background-size: cover;
+        background-attachment: fixed;
+        background-position: center;
+    }
+    
+    /* Hiá»‡u á»©ng Glassmorphism (kÃ­nh má») cho khá»‘i ná»™i dung chÃ­nh Ä‘á»ƒ dá»… Ä‘á»c chá»¯ */
+    .block-container {
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border-radius: 20px;
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+    
+    /* Hiá»‡u á»©ng má» nháº¹ cho Sidebar */
+    [data-testid="stSidebar"] {
+        background: rgba(255, 255, 255, 0.95);
+    }
+    /* Typography chá»‰nh chu */
+    h1 {
+        color: #1e3a8a !important;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+        font-weight: 800 !important;
+        margin-bottom: 0.5rem !important;
+    }
+    h2, h3 {
+        color: #2563eb !important;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+        font-weight: 700 !important;
+    }
+    /* LÃ m Ä‘áº¹p cÃ¡c nÃºt báº¥m (Gradient Modern) */
+    .stButton>button {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 1rem !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        transition: all 0.3s ease !important;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%) !important;
+    }
+    /* Style riÃªng cho khu vá»±c form */
+    [data-testid="stForm"] {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+        padding: 2rem;
+    }
+    /* Chá»‰nh giao diá»‡n Tab Ä‘áº¹p hÆ¡n */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        border-radius: 4px 4px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        font-weight: 600;
+        color: #64748b;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #2563eb !important;
+        border-bottom: 3px solid #2563eb !important;
+    }
+    /* Table / Dataframe Styles */
+    [data-testid="stDataFrame"] {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        background: #ffffff;
+    }
+</style>
+""", unsafe_allow_html=True)
+load_dotenv()
+
+# --- DATABASE ---
+DB_PATH = 'content_manager.db'
+
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def ensure_columns(cursor, table_name, columns):
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    existing_columns = [row[1] for row in cursor.fetchall()]
+    for column_name, column_type in columns.items():
+        if column_name not in existing_columns:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
+def init_db():
+    conn = get_db_connection()
+    c = conn.cursor()
+    # Báº£ng lÆ°u bÃ i Ä‘Äƒng
+    c.execute('''CREATE TABLE IF NOT EXISTS posts
+                 (
+                     id
+                     INTEGER
+                     PRIMARY
+                     KEY
+                     AUTOINCREMENT,
+                     date
+                     TEXT,
+                     platform
+                     TEXT,
+                     topic
+                     TEXT,
+                     content
+                     TEXT,
+                     status
+                     TEXT
+                 )''')
+    # Báº¢NG PHá»¤ TRá»¢ CHO TAB 1 (Lá»—i thiáº¿u báº£ng nÃ y á»Ÿ code cÅ©)
+    c.execute('''CREATE TABLE IF NOT EXISTS weekly_schedules
+                 (
+                     id
+                     INTEGER
+                     PRIMARY
+                     KEY
+                     AUTOINCREMENT,
+                     week_start
+                     TEXT,
+                     plan_json
+                     TEXT
+                 )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS knowledge_posts
+                 (
+                     id
+                     INTEGER
+                     PRIMARY
+                     KEY
+                     AUTOINCREMENT,
+                     date
+                     TEXT,
+                     platform
+                     TEXT,
+                     topic
+                     TEXT,
+                     audience
+                     TEXT,
+                     tool_name
+                     TEXT,
+                     knowledge_type
+                     TEXT,
+                     difficulty
+                     TEXT,
+                     content
+                     TEXT,
+                     summary
+                     TEXT,
+                     status
+                     TEXT
+                 )''')
+    c.execute("PRAGMA table_info(posts)")
+    post_columns = [row[1] for row in c.fetchall()]
+    if "content_type" not in post_columns:
+        c.execute("ALTER TABLE posts ADD COLUMN content_type TEXT DEFAULT 'Marketing Viral'")
+    ensure_columns(c, "knowledge_posts", {
+        "date": "TEXT",
+        "platform": "TEXT",
+        "topic": "TEXT",
+        "audience": "TEXT",
+        "tool_name": "TEXT",
+        "knowledge_type": "TEXT",
+        "difficulty": "TEXT",
+        "content": "TEXT",
+        "summary": "TEXT",
+        "status": "TEXT",
+    })
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
+def build_content_summary(content, max_length=220):
+    clean_content = " ".join(str(content or "").split())
+    if len(clean_content) <= max_length:
+        return clean_content
+    return clean_content[:max_length].rsplit(" ", 1)[0] + "..."
+
+
+def save_knowledge_post(
+    date=None,
+    platform="",
+    topic="",
+    audience="",
+    tool_name="",
+    knowledge_type="",
+    difficulty="",
+    content="",
+    summary="",
+    status="Draft"
+):
+    """Save an AI knowledge-sharing post to SQLite and return the new row id."""
+    if not date:
+        date = datetime.now().strftime("%d/%m/%Y %H:%M")
+    if not summary:
+        summary = build_content_summary(content)
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute(
+        """INSERT INTO knowledge_posts
+           (date, platform, topic, audience, tool_name, knowledge_type, difficulty, content, summary, status)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (date, platform, topic, audience, tool_name, knowledge_type, difficulty, content, summary, status)
+    )
+    conn.commit()
+    new_id = c.lastrowid
+    conn.close()
+    return new_id
+
+def get_knowledge_posts(status=None, platform=None, limit=None):
+    """Return knowledge posts as a pandas DataFrame, newest first."""
+    conn = get_db_connection()
+    query = "SELECT * FROM knowledge_posts"
+    filters = []
+    params = []
+
+    if status:
+        filters.append("status = ?")
+        params.append(status)
+    if platform:
+        filters.append("platform = ?")
+        params.append(platform)
+    if filters:
+        query += " WHERE " + " AND ".join(filters)
+    query += " ORDER BY id DESC"
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
+
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+
+def delete_knowledge_post(post_id):
+    """Delete one knowledge post by id. Returns True when a row was deleted."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM knowledge_posts WHERE id = ?", (post_id,))
+    deleted = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+# --- SIDEBAR: Cáº¤U HÃŒNH API & Máº NG XÃƒ Há»˜I ---
+st.sidebar.header("ðŸ”‘ Cáº¥u hÃ¬nh Há»‡ thá»‘ng")
+gemini_key = os.getenv("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key:", type="password")
+
+with st.sidebar.expander("ðŸŒ Cáº¥u hÃ¬nh Facebook API"):
+    fb_page_id = st.text_input("Facebook Page ID")
+    fb_access_token = st.text_input("Facebook Access Token", type="password")
+
+with st.sidebar.expander("ðŸ’¬ Cáº¥u hÃ¬nh Zalo OA API"):
+    zalo_oa_id = st.text_input("Zalo OA ID")
+    zalo_access_token = st.text_input("Zalo Access Token", type="password")
+
+with st.sidebar.expander("ðŸ’¼ Cáº¥u hÃ¬nh LinkedIn API"):
+    linkedin_author_urn = st.text_input("LinkedIn Author URN (VD: urn:li:person:123...)", placeholder="urn:li:person:...")
+    linkedin_access_token = st.text_input("LinkedIn Access Token", type="password")
+
+if gemini_key:
+    genai.configure(api_key=gemini_key)
+    # Sá»­ dá»¥ng flash Ä‘á»ƒ mÆ°á»£t mÃ  hÆ¡n
+    model = genai.GenerativeModel('gemini-2.5-flash')
+
+
+# --- UTILS: PDF EXPORT ---
+def export_post_to_pdf(topic, platform, content, image_prompts=""):
+    try:
+        from fpdf import FPDF
+        import os
+        import requests
+        import unicodedata
+
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.add_page()
+        
+        # Font handling logic
+        font_paths = ["DejaVuSans.ttf", "C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\tahoma.ttf"]
+        if not os.path.exists("DejaVuSans.ttf"):
+            try:
+                url = "https://raw.githubusercontent.com/halfmoon-tech/dejavu-fonts-ttf/master/DejaVuSans.ttf"
+                r = requests.get(url, timeout=5)
+                if r.status_code == 200:
+                    with open("DejaVuSans.ttf", "wb") as f: f.write(r.content)
+            except: pass
+        
+        font_loaded = False
+        for fpath in font_paths:
+            if os.path.exists(fpath):
+                try:
+                    pdf.add_font("CustomFont", "", fpath)
+                    pdf.set_font("CustomFont", size=12)
+                    font_loaded = True
+                    break
+                except: continue
+        if not font_loaded: pdf.set_font("Arial", size=12)
+
+        # Header
+        if font_loaded:
+            pdf.set_font("CustomFont", size=16)
+        else:
+            pdf.set_font("Arial", style="B", size=16)
+        pdf.cell(0, 10, txt="BÃ€I VIáº¾T MARKETING AI", ln=True, align='C')
+        pdf.ln(10)
+
+        # Details
+        pdf.set_font("CustomFont" if font_loaded else "Arial", size=11)
+        pdf.set_x(10)
+        pdf.multi_cell(190, 8, txt=f"Chá»§ Ä‘á»: {topic}")
+        pdf.set_x(10)
+        pdf.multi_cell(190, 8, txt=f"Ná»n táº£ng: {platform}")
+        pdf.set_x(10)
+        pdf.multi_cell(190, 8, txt=f"NgÃ y táº¡o: {datetime.now().strftime('%d/%m/%Y')}")
+        pdf.ln(5)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(10)
+
+        # Content
+        pdf.set_font("CustomFont" if font_loaded else "Arial", size=12)
+        # Handle Vietnamese Unicode and newlines
+        lines = content.split('\n')
+        for line in lines:
+            try:
+                pdf.set_x(10)
+                pdf.multi_cell(190, 7, txt=line)
+            except:
+                clean_line = "".join(c for c in unicodedata.normalize('NFKD', line) if not unicodedata.combining(c))
+                pdf.set_x(10)
+                pdf.multi_cell(190, 7, txt=clean_line)
+        
+        # Image Prompts if existing
+        if image_prompts:
+            pdf.ln(10)
+            if font_loaded:
+                pdf.set_font("CustomFont", size=12)
+            else:
+                pdf.set_font("Arial", style="B", size=12)
+            pdf.cell(0, 10, txt="Gá»£i Ã½ Prompt váº½ áº£nh AI:", ln=True)
+            pdf.set_font("CustomFont" if font_loaded else "Arial", size=10)
+            pdf.set_x(10)
+            pdf.multi_cell(190, 6, txt=image_prompts)
+
+        return bytes(pdf.output())
+    except Exception as e:
+        import traceback
+        import streamlit as st
+        st.error(f"Lá»—i táº¡o ná»™i dung PDF: {e}")
+        st.error(traceback.format_exc())
+        return None
+
+def export_all_posts_to_pdf(dataframe):
+    try:
+        from fpdf import FPDF
+        import os
+        import requests
+        import unicodedata
+
+        pdf = FPDF(orientation="L", unit="mm", format="A4")
+        pdf.add_page()
+        
+        font_paths = ["DejaVuSans.ttf", "C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\tahoma.ttf"]
+        # Font check/load... (reusing same logic)
+        if not os.path.exists("DejaVuSans.ttf"):
+            try:
+                url = "https://raw.githubusercontent.com/halfmoon-tech/dejavu-fonts-ttf/master/DejaVuSans.ttf"
+                r = requests.get(url, timeout=5)
+                if r.status_code == 200:
+                    with open("DejaVuSans.ttf", "wb") as f: f.write(r.content)
+            except: pass
+        
+        font_loaded = False
+        for fpath in font_paths:
+            if os.path.exists(fpath):
+                try:
+                    pdf.add_font("CustomFont", "", fpath)
+                    pdf.set_font("CustomFont", size=10)
+                    font_loaded = True
+                    break
+                except: continue
+        if not font_loaded: pdf.set_font("Arial", size=10)
+
+        # Title
+        if font_loaded:
+            pdf.set_font("CustomFont", size=14)
+        else:
+            pdf.set_font("Arial", style="B", size=14)
+        pdf.cell(0, 10, txt="BÃO CÃO Lá»ŠCH Sá»¬ BÃ€I VIáº¾T MARKETING AI", ln=True, align='C')
+        pdf.ln(5)
+
+        # Table Header
+        col_widths = [15, 40, 30, 140, 50]
+        cols = ['ID', 'DATE', 'PLATFORM', 'TOPIC', 'STATUS']
+        pdf.set_fill_color(230, 230, 230)
+        if font_loaded:
+            pdf.set_font("CustomFont", size=10)
+        else:
+            pdf.set_font("Arial", style="B", size=10)
+        for i, col in enumerate(cols):
+            pdf.cell(col_widths[i], 10, txt=col, border=1, fill=True, align='C')
+        pdf.ln()
+
+        # Table Rows
+        pdf.set_font("CustomFont" if font_loaded else "Arial", size=9)
+        cols_to_print = ['id', 'date', 'platform', 'topic', 'status']
+        for _, row in dataframe.iterrows():
+            for i, col in enumerate(cols_to_print):
+                val = str(row[col]).replace('\n', ' ')
+                if col == 'topic' and len(val) > 70: val = val[:67] + "..."
+                elif col != 'topic' and len(val) > 25: val = val[:22] + "..."
+                
+                try:
+                    pdf.cell(col_widths[i], 10, txt=val, border=1)
+                except:
+                    clean_val = "".join(c for c in unicodedata.normalize('NFKD', val) if not unicodedata.combining(c))
+                    pdf.cell(col_widths[i], 10, txt=clean_val, border=1)
+            pdf.ln()
+
+        return bytes(pdf.output())
+    except Exception as e:
+        import traceback
+        import streamlit as st
+        st.error(f"Lá»—i táº¡o bÃ¡o cÃ¡o PDF: {e}")
+        st.error(traceback.format_exc())
+        return None
+
+
+def _knowledge_value(row, key, default=""):
+    """Read a value from a pandas Series, sqlite row, or dict."""
+    try:
+        value = row.get(key, default)
+    except AttributeError:
+        try:
+            value = row[key]
+        except Exception:
+            value = default
+    if value is None:
+        return default
+    return value
+
+
+def export_knowledge_to_pdf(row):
+    """Export one AI Knowledge post to a branded PDF without touching legacy exports."""
+    try:
+        from fpdf import FPDF
+        import os
+        import unicodedata
+
+        def clean(value):
+            return str(value or "")
+
+        def safe_text(value):
+            value = clean(value)
+            if font_loaded:
+                return value
+            return "".join(ch for ch in unicodedata.normalize("NFKD", value) if not unicodedata.combining(ch))
+
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.add_page()
+
+        font_paths = ["C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\tahoma.ttf", "DejaVuSans.ttf"]
+        font_loaded = False
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    pdf.add_font("KnowledgeFont", "", font_path)
+                    pdf.add_font("KnowledgeFont", "B", font_path)
+                    font_loaded = True
+                    break
+                except Exception:
+                    continue
+
+        font_name = "KnowledgeFont" if font_loaded else "Arial"
+
+        # Watermark
+        pdf.set_text_color(232, 238, 247)
+        pdf.set_font(font_name, "B", 28)
+        pdf.text(58, 150, safe_text("hungvietai.com"))
+
+        # Logo block
+        pdf.set_fill_color(30, 58, 138)
+        pdf.rect(12, 12, 42, 14, style="F")
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font(font_name, "B", 10)
+        pdf.set_xy(12, 16)
+        pdf.cell(42, 6, safe_text("HUNG VIET AI"), align="C")
+
+        pdf.set_text_color(30, 58, 138)
+        pdf.set_font(font_name, "B", 18)
+        pdf.set_xy(12, 34)
+        pdf.multi_cell(186, 9, safe_text("AI Knowledge Sharing"), align="C")
+
+        topic = clean(_knowledge_value(row, "topic", "AI Knowledge"))
+        metadata = [
+            ("Topic", topic),
+            ("Date", _knowledge_value(row, "date")),
+            ("Platform", _knowledge_value(row, "platform")),
+            ("AI Tool", _knowledge_value(row, "tool_name")),
+            ("Audience", _knowledge_value(row, "audience")),
+            ("Difficulty", _knowledge_value(row, "difficulty")),
+            ("Knowledge Type", _knowledge_value(row, "knowledge_type")),
+            ("Status", _knowledge_value(row, "status")),
+        ]
+
+        pdf.ln(8)
+        pdf.set_fill_color(239, 246, 255)
+        pdf.set_draw_color(191, 219, 254)
+        pdf.set_text_color(15, 23, 42)
+        pdf.set_font(font_name, "", 10)
+        for label, value in metadata:
+            pdf.set_x(18)
+            pdf.set_font(font_name, "B", 10)
+            pdf.cell(38, 8, safe_text(label), border=1, fill=True)
+            pdf.set_font(font_name, "", 10)
+            pdf.multi_cell(136, 8, safe_text(value), border=1)
+
+        pdf.ln(6)
+        pdf.set_text_color(30, 58, 138)
+        pdf.set_font(font_name, "B", 13)
+        pdf.cell(0, 8, safe_text("Content"), ln=True)
+        pdf.set_draw_color(37, 99, 235)
+        pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+        pdf.ln(4)
+
+        pdf.set_text_color(30, 41, 59)
+        for line in clean(_knowledge_value(row, "content")).split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("###") or stripped.startswith("##"):
+                pdf.ln(2)
+                pdf.set_text_color(30, 58, 138)
+                pdf.set_font(font_name, "B", 12)
+                pdf.multi_cell(174, 7, safe_text(stripped.replace("#", "").strip()))
+                pdf.set_text_color(30, 41, 59)
+                pdf.set_font(font_name, "", 10)
+            elif stripped:
+                pdf.set_font(font_name, "", 10)
+                pdf.multi_cell(174, 6, safe_text(stripped))
+            else:
+                pdf.ln(2)
+
+        pdf.set_y(-16)
+        pdf.set_text_color(100, 116, 139)
+        pdf.set_font(font_name, "", 8)
+        pdf.cell(0, 8, safe_text("hungvietai.com | AI Knowledge Export"), align="C")
+        return bytes(pdf.output())
+    except Exception as e:
+        import traceback
+        import streamlit as st
+        st.error(f"Lỗi tạo PDF AI Knowledge: {e}")
+        st.error(traceback.format_exc())
+        return None
+
+
+def export_knowledge_to_docx(row):
+    """Export one AI Knowledge post to a styled Word document."""
+    try:
+        from docx import Document
+        from docx.shared import Pt, Cm, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.table import WD_TABLE_ALIGNMENT
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        import io
+
+        def shade_cell(cell, fill):
+            tc_pr = cell._tc.get_or_add_tcPr()
+            shd = OxmlElement("w:shd")
+            shd.set(qn("w:fill"), fill)
+            tc_pr.append(shd)
+
+        doc = Document()
+        for section in doc.sections:
+            section.top_margin = Cm(1.8)
+            section.bottom_margin = Cm(1.8)
+            section.left_margin = Cm(2)
+            section.right_margin = Cm(2)
+
+        title = doc.add_heading("AI Knowledge Sharing", level=0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in title.runs:
+            run.font.color.rgb = RGBColor(30, 58, 138)
+            run.font.size = Pt(20)
+
+        subtitle = doc.add_paragraph(str(_knowledge_value(row, "topic", "AI Knowledge")))
+        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in subtitle.runs:
+            run.font.color.rgb = RGBColor(71, 85, 105)
+            run.font.size = Pt(11)
+
+        metadata = [
+            ("Date", _knowledge_value(row, "date")),
+            ("Platform", _knowledge_value(row, "platform")),
+            ("AI Tool", _knowledge_value(row, "tool_name")),
+            ("Audience", _knowledge_value(row, "audience")),
+            ("Difficulty", _knowledge_value(row, "difficulty")),
+            ("Knowledge Type", _knowledge_value(row, "knowledge_type")),
+            ("Status", _knowledge_value(row, "status")),
+        ]
+
+        table = doc.add_table(rows=1, cols=2)
+        table.style = "Light Grid Accent 1"
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.rows[0].cells[0].text = "Metadata"
+        table.rows[0].cells[1].text = "Value"
+        for cell in table.rows[0].cells:
+            shade_cell(cell, "1E3A8A")
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(255, 255, 255)
+
+        for label, value in metadata:
+            cells = table.add_row().cells
+            cells[0].text = str(label)
+            cells[1].text = str(value or "")
+            shade_cell(cells[0], "EFF6FF")
+
+        doc.add_paragraph("")
+        doc.add_heading("Content", level=1)
+        for raw_line in str(_knowledge_value(row, "content")).split("\n"):
+            line = raw_line.strip()
+            if not line:
+                doc.add_paragraph("")
+            elif line.startswith("###") or line.startswith("##"):
+                doc.add_heading(line.replace("#", "").strip(), level=2)
+            else:
+                paragraph = doc.add_paragraph(line)
+                for run in paragraph.runs:
+                    run.font.size = Pt(10.5)
+                    run.font.color.rgb = RGBColor(30, 41, 59)
+
+        footer = doc.sections[0].footer.paragraphs[0]
+        footer.text = "hungvietai.com | AI Knowledge Export"
+        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in footer.runs:
+            run.font.size = Pt(8)
+            run.font.color.rgb = RGBColor(100, 116, 139)
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception as e:
+        import traceback
+        import streamlit as st
+        st.error(f"Lỗi tạo Word AI Knowledge: {e}")
+        st.error(traceback.format_exc())
+        return None
+
+
+def export_knowledge_to_csv(dataframe):
+    """Export AI Knowledge rows with complete metadata."""
+    metadata_columns = [
+        "id", "date", "platform", "topic", "audience", "tool_name",
+        "knowledge_type", "difficulty", "summary", "status", "content"
+    ]
+    export_df = dataframe.copy()
+    for column in metadata_columns:
+        if column not in export_df.columns:
+            export_df[column] = ""
+    return export_df[metadata_columns].to_csv(index=False).encode("utf-8-sig")
+
+# --- UTILS: WORD EXPORT CHO Káº¾ HOáº CH TUáº¦N ---
+def export_plan_to_word(plan_data):
+    """Xuáº¥t káº¿ hoáº¡ch tuáº§n ra file Word (.docx) vá»›i báº£ng Ä‘áº¹p"""
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, Cm, RGBColor
+        from docx.enum.table import WD_TABLE_ALIGNMENT
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        import io
+
+        doc = Document()
+
+        # Thiáº¿t láº­p margin
+        for section in doc.sections:
+            section.top_margin = Cm(2)
+            section.bottom_margin = Cm(2)
+            section.left_margin = Cm(2.5)
+            section.right_margin = Cm(2.5)
+
+        # TiÃªu Ä‘á»
+        title = doc.add_heading('', level=0)
+        run = title.add_run('ðŸ“… Káº¾ HOáº CH Ná»˜I DUNG 7 NGÃ€Y')
+        run.font.size = Pt(20)
+        run.font.color.rgb = RGBColor(30, 58, 138)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # ThÃ´ng tin ngÃ y táº¡o
+        date_para = doc.add_paragraph()
+        date_run = date_para.add_run(f'NgÃ y táº¡o: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+        date_run.font.size = Pt(10)
+        date_run.font.color.rgb = RGBColor(100, 116, 139)
+        date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph('')  # DÃ²ng trá»‘ng
+
+        # Táº¡o báº£ng
+        headers = list(plan_data[0].keys()) if plan_data else ['day', 'topic', 'angle']
+        header_labels = {
+            'day': 'Thá»©',
+            'topic': 'Chá»§ Ä‘á»',
+            'target': 'Äá»‘i tÆ°á»£ng má»¥c tiÃªu',
+            'angle': 'GÃ³c nhÃ¬n tiáº¿p cáº­n'
+        }
+
+        table = doc.add_table(rows=1, cols=len(headers))
+        table.style = 'Light Grid Accent 1'
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+        # Header row
+        hdr_cells = table.rows[0].cells
+        for i, key in enumerate(headers):
+            label = header_labels.get(key, key.upper())
+            hdr_cells[i].text = label
+            for paragraph in hdr_cells[i].paragraphs:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in paragraph.runs:
+                    run.font.bold = True
+                    run.font.size = Pt(11)
+                    run.font.color.rgb = RGBColor(30, 58, 138)
+
+        # Data rows
+        for item in plan_data:
+            row_cells = table.add_row().cells
+            for i, key in enumerate(headers):
+                row_cells[i].text = str(item.get(key, ''))
+                for paragraph in row_cells[i].paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = Pt(10)
+
+        # Footer
+        doc.add_paragraph('')
+        footer = doc.add_paragraph()
+        footer_run = footer.add_run('ðŸŒ Website: hungvietai.com | Táº¡o bá»Ÿi AI-Agent Content & Auto-Post')
+        footer_run.font.size = Pt(9)
+        footer_run.font.color.rgb = RGBColor(100, 116, 139)
+        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Xuáº¥t ra bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except ImportError:
+        import streamlit as st
+        st.error("Thiáº¿u thÆ° viá»‡n python-docx. Vui lÃ²ng cÃ i Ä‘áº·t: pip install python-docx")
+        return None
+    except Exception as e:
+        import traceback
+        import streamlit as st
+        st.error(f"Lá»—i táº¡o file Word: {e}")
+        st.error(traceback.format_exc())
+        return None
+
+
+def post_to_facebook(message):
+    if not fb_page_id or not fb_access_token:
+        return False, "Thiáº¿u thÃ´ng tin Facebook API."
+
+    url = f"https://graph.facebook.com/{fb_page_id}/feed"
+    payload = {'message': message, 'access_token': fb_access_token}
+    try:
+        response = requests.post(url, data=payload)
+        res_data = response.json()
+        if "id" in res_data:
+            return True, f"ÄÃ£ Ä‘Äƒng lÃªn Facebook! ID: {res_data['id']}"
+        return False, f"Lá»—i FB: {res_data.get('error', {}).get('message')}"
+    except Exception as e:
+        return False, str(e)
+
+
+def post_to_zalo_oa(message):
+    if not zalo_access_token:
+        return False, "Thiáº¿u Zalo Access Token."
+
+    url = "https://openapi.zalo.me/v2.0/oa/message"
+    headers = {"access_token": zalo_access_token, "Content-Type": "application/json"}
+    payload = {
+        "recipient": {"target": "all"},
+        "message": {"text": message}
+    }
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        res_data = response.json()
+        if res_data.get("error") == 0:
+            return True, "ÄÃ£ gá»­i tin nháº¯n Broadcast Zalo thÃ nh cÃ´ng!"
+        return False, f"Lá»—i Zalo: {res_data.get('message')}"
+    except Exception as e:
+        return False, str(e)
+
+
+def post_to_linkedin(message):
+    if not linkedin_author_urn or not linkedin_access_token:
+        return False, "Thiáº¿u thÃ´ng tin LinkedIn API."
+
+    url = "https://api.linkedin.com/v2/ugcPosts"
+    headers = {
+        "Authorization": f"Bearer {linkedin_access_token}",
+        "X-Restli-Protocol-Version": "2.0.0",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "author": linkedin_author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": message},
+                "shareMediaCategory": "NONE"
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+    }
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 201:
+            res_data = response.json()
+            return True, f"ÄÃ£ Ä‘Äƒng lÃªn LinkedIn! ID: {res_data.get('id')}"
+        return False, f"Lá»—i LinkedIn: {response.text}"
+    except Exception as e:
+        return False, str(e)
+
+
+# --- FUNCTIONS ---
+def get_weekly_plan():
+    """Táº¡o káº¿ hoáº¡ch 7 ngÃ y tá»« AI"""
+    prompt = """
+    HÃ£y Ä‘Ã³ng vai má»™t Content Strategist. Láº­p káº¿ hoáº¡ch ná»™i dung 7 ngÃ y Ä‘á»ƒ quáº£ng bÃ¡ dá»‹ch vá»¥ "XÃ¢y dá»±ng AI-Agent thÆ°Æ¡ng hiá»‡u cÃ¡ nhÃ¢n".
+    YÃªu cáº§u: 
+    - Má»—i ngÃ y cÃ³ 1 chá»§ Ä‘á» chÃ­nh.
+    - PhÃ¢n bá»•: 2 bÃ i chuyÃªn sÃ¢u ká»¹ thuáº­t, 2 bÃ i vá» lá»£i Ã­ch kinh táº¿ (kiáº¿m tiá»n), 2 bÃ i Case Study, 1 bÃ i kÃªu gá»i dá»‹ch vá»¥.
+    - Tráº£ vá» káº¿t quáº£ dÆ°á»›i dáº¡ng JSON thuáº§n tÃºy (Array of Objects), má»—i Object cÃ³: "day" (Thá»©), "topic" (Chá»§ Ä‘á»), "target" (Äá»‘i tÆ°á»£ng má»¥c tiÃªu phÃ¹ há»£p nháº¥t cho chá»§ Ä‘á» nÃ y, vÃ­ dá»¥: CEO, Sales, Chá»§ Shop, Freelancer, ChuyÃªn gia AI, NhÃ  Ä‘áº§u tÆ°), "angle" (GÃ³c nhÃ¬n tiáº¿p cáº­n).
+    - NgÃ´n ngá»¯: Tiáº¿ng Viá»‡t.
+    """
+    response = model.generate_content(prompt)
+    clean_json = response.text.replace('```json', '').replace('```', '').strip()
+    return json.loads(clean_json)
+
+
+CONTENT_TYPES = [
+    "Marketing Viral",
+    "AI Knowledge Sharing"
+]
+
+AI_TOOLS = [
+    "ChatGPT", "Claude", "Gemini", "Cursor", "Windsurf", "Codex",
+    "n8n", "Make", "MCP", "Lovable", "Bolt"
+]
+
+AI_AUDIENCES = ["Người mới", "Nhân viên", "CEO", "Developer", "AI Specialist"]
+AI_DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"]
+AI_KNOWLEDGE_TYPES = [
+    "Tutorial", "Tips", "Case Study", "Comparison", "Mistakes",
+    "Best Practice", "Deep Dive"
+]
+
+
+def generate_ai_knowledge_content(tool_name, topic, audience, difficulty, knowledge_type):
+    """Generate a practical AI knowledge-sharing article with Gemini."""
+    prompt = f"""
+Ban la chuyen gia chia se kien thuc AI thuc chien.
+
+Hay tao mot noi dung AI Knowledge Sharing bang tieng Viet.
+
+Thong tin dau vao:
+- AI Tool: {tool_name}
+- Topic: {topic}
+- Audience: {audience}
+- Difficulty: {difficulty}
+- Knowledge Type: {knowledge_type}
+
+Nguyen tac bat buoc:
+- Khong quang cao.
+- Khong ban hang.
+- Khong PR dich vu, khoa hoc, cong ty hoac ca nhan.
+- Tap trung chia se kinh nghiem thuc chien.
+- Viet de hieu, ro rang, co tinh ung dung cao.
+- Dua nhieu vi du cu the, gan voi cong viec thuc te.
+- Dieu chinh ngon ngu va do sau theo Audience va Difficulty.
+- Neu noi ve prompt, workflow hoac automation, hay dua mau co the ap dung ngay.
+- Khong them phan nao ngoai 15 phan ben duoi.
+
+Output gom dung 15 phan, dung thu tu va dung tieu de sau:
+
+### 1. Overview
+Giai thich tong quan ve chu de, boi canh su dung {tool_name}, va nguoi doc se hoc duoc gi.
+
+### 2. Why people fail
+Chi ra nhung ly do pho bien khien moi nguoi ap dung sai hoac khong hieu dung chu de nay.
+
+### 3. Best practices
+Liet ke cac nguyen tac thuc chien nen lam, co vi du minh hoa cho tung y quan trong.
+
+### 4. Workflow
+Dua ra workflow tung buoc de ap dung vao cong viec thuc te.
+
+### 5. Prompt framework
+Dua ra khung prompt/cong thuc thao tac co the tai su dung, kem 2-3 mau prompt cu the.
+
+### 6. Real example
+Dua mot vi du thuc te, co dau vao, cach lam, va ket qua mong doi.
+
+### 7. Case study
+Viet mot case study ngan, trung tinh, co van de ban dau, cach ap dung, ket qua va bai hoc.
+
+### 8. Comparison
+So sanh cach lam dung va cach lam sai, hoac so sanh {tool_name} voi cach lam thu cong/cong cu lien quan.
+
+### 9. Mistakes
+Liet ke cac sai lam thuong gap va cach sua tung sai lam.
+
+### 10. Checklist
+Tao checklist ngan gon de nguoi doc tu kiem tra truoc khi ap dung.
+
+### 11. Facebook post
+Viet mot bai Facebook chia se kien thuc, khong ban hang, ngan gon, de doc, co vi du.
+
+### 12. LinkedIn post
+Viet mot bai LinkedIn chuyen nghiep, thuc chien, co insight va bai hoc ro rang.
+
+### 13. Zalo post
+Viet mot bai Zalo ngan, gan gui, de hieu, phu hop de gui/dua len Zalo.
+
+### 14. Reels
+Dua kich ban Reels ngan gom hook, canh quay, voice-over, text overlay va ket bai.
+
+### 15. CTA
+Dua cac cau hoi goi mo thao luan/hoc tap, khong keu goi mua hang, khong ban hang.
+"""
+    response = model.generate_content(prompt)
+    return response.text.strip()
+
+
+# --- GIAO DIá»†N CHÃNH ---
+st.title("ðŸš€ AI-Agent Content & Auto-Post")
+st.markdown("<p style='font-size: 1.15rem; color: #64748b; margin-top: -10px; margin-bottom: 2rem;'>Há»‡ thá»‘ng hÃ³a vÃ  Tá»± Ä‘á»™ng hÃ³a chiáº¿n lÆ°á»£c Marketing trÃªn Máº¡ng XÃ£ Há»™i vá»›i sá»± há»— trá»£ cá»§a Generative AI.</p>", unsafe_allow_html=True)
+
+tab_plan, tab_create, tab_history = st.tabs(["ðŸ“… LÃªn lá»‹ch tuáº§n", "ðŸ“ Táº¡o & ÄÄƒng BÃ i", "ðŸ“Š Lá»‹ch sá»­ bÃ i viáº¿t"])
+
+# --- TAB 1: LÃŠN Lá»ŠCH TUáº¦N ---
+with tab_plan:
+    st.header("Lá»™ trÃ¬nh ná»™i dung 7 ngÃ y")
+    col_btn1, col_btn2 = st.columns([1, 4])
+
+    if col_btn1.button("ðŸ”„ Gá»£i Ã½ káº¿ hoáº¡ch má»›i"):
+        with st.spinner("AI dang tao ke hoach..."):
+            try:
+                plan = get_weekly_plan()
+                st.session_state['current_plan'] = plan
+                # LÆ°u vÃ o DB Ä‘á»ƒ dÃ¹ng láº¡i
+                conn = sqlite3.connect('content_manager.db')
+                c = conn.cursor()
+                c.execute("INSERT INTO weekly_schedules (week_start, plan_json) VALUES (?,?)",
+                          (datetime.now().strftime("%Y-%m-%d"), json.dumps(plan)))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                st.error(f"Lá»—i khi táº¡o lá»‹ch: {e}")
+
+    if 'current_plan' in st.session_state:
+        df_plan = pd.DataFrame(st.session_state['current_plan'])
+        st.table(df_plan)
+        st.info("ðŸ’¡ Máº¹o: Báº¡n cÃ³ thá»ƒ copy 'Chá»§ Ä‘á»' bÃªn dÆ°á»›i Ä‘á»ƒ dÃ¡n vÃ o tab Táº¡o Content.")
+
+        # NÃºt xuáº¥t Word
+        st.divider()
+        col_word, _ = st.columns([1, 3])
+        with col_word:
+            word_bytes = export_plan_to_word(st.session_state['current_plan'])
+            if word_bytes:
+                st.download_button(
+                    "ðŸ“„ Xuáº¥t káº¿ hoáº¡ch tuáº§n (Word)",
+                    data=word_bytes,
+                    file_name=f"Ke_Hoach_Tuan_{datetime.now().strftime('%d%m%Y')}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+    else:
+        st.write("ChÆ°a cÃ³ káº¿ hoáº¡ch tuáº§n nÃ y. HÃ£y nháº¥n nÃºt Ä‘á»ƒ AI gá»£i Ã½.")
+
+# --- TAB 2: Táº O CONTENT (ÄÃƒ Sá»¬A) ---
+with tab_create:
+    with st.form("content_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            platform = st.selectbox("Chá»n ná»n táº£ng muá»‘n Ä‘Äƒng", ["Facebook", "Zalo OA", "LinkedIn", "Táº¥t cáº£"])
+            content_type = st.selectbox("Loai noi dung", CONTENT_TYPES)
+            topic = st.text_area("Chá»§ Ä‘á» bÃ i viáº¿t", placeholder="VÃ­ dá»¥: Lá»£i Ã­ch cá»§a AI-Agent trong bÃ¡n hÃ ng...")
+        with col2:
+            target = st.selectbox("Äá»‘i tÆ°á»£ng má»¥c tiÃªu (Audience Selection)", [
+                "CEO (Chiáº¿n lÆ°á»£c, TÄƒng trÆ°á»Ÿng, Lá»£i nhuáº­n)",
+                "Sales (Chá»‘t sale, KhÃ¡ch hÃ ng, Doanh sá»‘)",
+                "Chá»§ Shop (ÄÆ¡n hÃ ng, Marketing, Quáº£ng cÃ¡o)",
+                "Freelancer (ThÆ°Æ¡ng hiá»‡u cÃ¡ nhÃ¢n, Thu nháº­p, KhÃ¡ch hÃ ng)",
+                "ChuyÃªn gia AI (AI Agent, Automation, CÃ´ng nghá»‡)",
+"NhÃ  Ä‘áº§u tÆ° (Xu hÆ°á»›ng, ROI, CÆ¡ há»™i)"
+            ])
+            angle_selection = st.selectbox("GÃ³c nhÃ¬n bÃ i viáº¿t (Angle Selection)", [
+                "Tá»± Ä‘á»™ng chá»n (Tá»‘i Æ°u nháº¥t)",
+                "GÃ³c sai láº§m phá»• biáº¿n",
+                "GÃ³c cÃ¢u chuyá»‡n thá»±c táº¿",
+                "GÃ³c tráº£i nghiá»‡m cÃ¡ nhÃ¢n",
+                "GÃ³c tranh luáº­n",
+                "GÃ³c xu hÆ°á»›ng",
+                "GÃ³c hÆ°á»›ng dáº«n",
+                "GÃ³c case study",
+                "Sinh trá»n bá»™ 7 bÃ i (Multi-Angle)"
+            ])
+            auto_post = st.checkbox("Tá»± Ä‘á»™ng Ä‘Äƒng bÃ i sau khi táº¡o", value=False)
+
+        st.markdown("---")
+        st.markdown("### AI Knowledge Sharing")
+        st.caption("Cấu hình này dùng khi chọn loại nội dung AI Knowledge Sharing.")
+        ai_col1, ai_col2 = st.columns(2)
+        with ai_col1:
+            ai_tool = st.selectbox("AI Tool", AI_TOOLS)
+            ai_audience = st.selectbox("Audience", AI_AUDIENCES)
+        with ai_col2:
+            ai_difficulty = st.selectbox("Difficulty", AI_DIFFICULTIES)
+            ai_knowledge_type = st.selectbox("Knowledge Type", AI_KNOWLEDGE_TYPES)
+        submit = st.form_submit_button("Báº¯t Ä‘áº§u xá»­ lÃ½ âœ¨")
+
+        if submit and topic:
+            st.session_state['last_topic'] = topic
+            st.session_state['last_content_type'] = content_type
+            if not gemini_key:
+                st.error("Vui lÃ²ng nháº­p API Key!")
+            else:
+                with st.spinner(f"AI dang tao noi dung {content_type}..."):
+                    try:
+                        prompt = f"""
+Báº¡n lÃ  chuyÃªn gia Viral Content Marketing cho Facebook vÃ  Zalo (CONTENT ENGINE), báº­c tháº§y giáº­t tiÃªu Ä‘á» thu hÃºt (HOOK GENERATOR), chuyÃªn gia phÃ¢n tÃ­ch cáº¥u trÃºc bÃ i viáº¿t lan truyá»n (VIRAL STRUCTURE ENGINE), chuyÃªn gia giá»¯ chÃ¢n ngÆ°á»i Ä‘á»c (RETENTION ENGINE), báº­c tháº§y Ä‘a dáº¡ng hÃ³a gÃ³c nhÃ¬n (MULTI ANGLE GENERATOR), chuyÃªn gia thiáº¿t káº¿ hÃ¬nh áº£nh thu hÃºt (REELS & THUMBNAIL ENGINE) kiÃªm chuyÃªn gia Ä‘á»‹nh vá»‹ Ä‘á»‘i tÆ°á»£ng má»¥c tiÃªu sÃ¢u sáº¯c (AUDIENCE PERSONALIZATION).
+
+Nhiá»‡m vá»¥: HÃ£y táº¡o ra bá»™ ná»™i dung tiáº¿p thá»‹ viral toÃ n diá»‡n cho ná»n táº£ng {platform} dá»±a trÃªn chá»§ Ä‘á» vÃ  Ä‘á»‘i tÆ°á»£ng má»¥c tiÃªu dÆ°á»›i Ä‘Ã¢y.
+
+Chá»§ Ä‘á»: {topic}
+Äá»‘i tÆ°á»£ng má»¥c tiÃªu Ä‘Æ°á»£c chá»n: {target}
+GÃ³c nhÃ¬n yÃªu cáº§u: {angle_selection}
+
+---
+Báº®T BUá»˜C TRáº¢ Vá»€ ÄÃšNG 15 PHáº¦N THEO Äá»¨NG THá»¨ Tá»° VÃ€ Äá»ŠNH Dáº NG DÆ¯á»šI ÄÃ‚Y (Sá»¬ Dá»¤NG TIÃŠU Äá»€ MARKDOWN CÃ“ Sá» THá»¨ Tá»° RÃ• RÃ€NG):
+
+### 1. Audience Insight
+PhÃ¢n tÃ­ch sÃ¢u sáº¯c hÃ nh vi, tÃ¢m lÃ½, ná»—i sá»£ tháº§m kÃ­n, rÃ o cáº£n vÃ  khao khÃ¡t lá»›n nháº¥t cá»§a nhÃ³m Ä‘á»‘i tÆ°á»£ng "{target}" liÃªn quan Ä‘áº¿n chá»§ Ä‘á» "{topic}".
+
+### 2. Pain Point
+Chá»‰ ra ná»—i Ä‘au cá»¥ thá»ƒ, nhá»¯ng nhá»©c nhá»‘i thá»±c táº¿ mÃ  Ä‘á»‘i tÆ°á»£ng Ä‘ang gáº·p pháº£i hÃ ng ngÃ y khi chÆ°a cÃ³ giáº£i phÃ¡p.
+
+### 3. Desire
+Káº¿t quáº£ lÃ½ tÆ°á»Ÿng, mong muá»‘n tá»™t cÃ¹ng mÃ  Ä‘á»‘i tÆ°á»£ng khÃ¡t khao Ä‘áº¡t Ä‘Æ°á»£c Ä‘á»ƒ giáº£i quyáº¿t ná»—i Ä‘au Ä‘Ã³.
+
+### 4. 7 gÃ³c triá»ƒn khai
+MÃ´ táº£ tÃ³m táº¯t ngáº¯n gá»n cÃ¡ch tiáº¿p cáº­n chá»§ Ä‘á» dÆ°á»›i 7 gÃ³c nhÃ¬n hoÃ n toÃ n khÃ¡c biá»‡t:
+1. GÃ³c sai láº§m phá»• biáº¿n: Chá»‰ ra sai láº§m cá»§a háº§u háº¿t má»i ngÆ°á»i vÃ  váº¡ch tráº§n háº­u quáº£.
+2. GÃ³c cÃ¢u chuyá»‡n thá»±c táº¿: Ká»ƒ má»™t cÃ¢u chuyá»‡n cÃ³ tháº­t xáº£y ra ngoÃ i Ä‘á»i Ä‘á»ƒ chá»©ng minh.
+3. GÃ³c tráº£i nghiá»‡m cÃ¡ nhÃ¢n: DÃ¹ng gÃ³c nhÃ¬n thá»© nháº¥t "TÃ´i" chia sáº» bÃ i há»c xÆ°Æ¡ng mÃ¡u cá»§a báº£n thÃ¢n.
+4. GÃ³c tranh luáº­n: ÄÆ°a ra gÃ³c nhÃ¬n trÃ¡i chiá»u cá»±c Ä‘oan, thÃ¡ch thá»©c niá»m tin cÅ© Ä‘á»ƒ khÆ¡i mÃ o tranh luáº­n.
+5. GÃ³c xu hÆ°á»›ng: LiÃªn káº¿t chá»§ Ä‘á» vá»›i má»™t lÃ n sÃ³ng, trÃ o lÆ°u hay cÃ´ng nghá»‡ Ä‘ang bÃ¹ng ná»• hiá»‡n nay.
+6. GÃ³c hÆ°á»›ng dáº«n: ÄÆ°a ra cÃ¡c bÆ°á»›c thá»±c hiá»‡n vÃ´ cÃ¹ng rÃµ rÃ ng, cá»¥ thá»ƒ dáº¡ng "LÃ m tháº¿ nÃ o Ä‘á»ƒ...".
+7. GÃ³c case study: MÃ´ táº£ má»™t trÆ°á»ng há»£p thÃ nh cÃ´ng cá»¥ thá»ƒ vá»›i sá»‘ liá»‡u trÆ°á»›c vÃ  sau rÃµ rÃ ng. Äáº¶C BIá»†T: Náº¿u Ä‘á»‘i tÆ°á»£ng má»¥c tiÃªu lÃ  CEO, báº¯t buá»™c bá»• sung ngay sau pháº§n nÃ y má»™t lá»›p phÃ¢n tÃ­ch chuyÃªn sÃ¢u mang tÃªn "Executive Insight" Ä‘á»ƒ lÃ m rÃµ bÃ i há»c cá»‘t lÃµi dÆ°á»›i lÄƒng kÃ­nh quáº£n trá»‹ vÄ© mÃ´, Ä‘Ã²n báº©y cÃ´ng nghá»‡ vÃ  quáº£n trá»‹ sá»± thay Ä‘á»•i.
+
+### 5. 10 tiÃªu Ä‘á» viral
+Danh sÃ¡ch 10 tiÃªu Ä‘á» giáº­t tÃ­t siÃªu cuá»‘n hÃºt, kÃ­ch thÃ­ch tÃ² mÃ² cá»±c Ä‘á»™ khiáº¿n ngÆ°á»i dÃ¹ng dá»«ng lÆ°á»›t vÃ  click Ä‘á»c ngay láº­p tá»©c. (LÆ°u Ã½: Äá»‘i vá»›i CEO, tiÃªu Ä‘á» pháº£i giá»¯ tÃ­nh chuyÃªn nghiá»‡p, trÃ¡nh tá»« ngá»¯ giáº­t gÃ¢n ráº» tiá»n).
+
+### 6. BÃ i Facebook
+Viáº¿t má»™t bÃ i Ä‘Äƒng Facebook hoÃ n chá»‰nh, tá»‘i Æ°u hÃ³a hiá»ƒn thá»‹ vÃ  tÆ°Æ¡ng tÃ¡c.
+
+**QUY Táº®C Bá» Cá»¤C TRÃŒNH BÃ€Y Báº®T Máº®T (Báº®T BUá»˜C):**
+- DÃ²ng Ä‘áº§u tiÃªn: Ghi "[Cáº¥u trÃºc tá»‘i Æ°u: AIDA/PAS/Storytelling/Listicle/Before-After]". Cáº¥u trÃºc pháº£i phÃ¹ há»£p vá»›i gÃ³c nhÃ¬n Ä‘Æ°á»£c yÃªu cáº§u.
+- HOOK 3 DÃ’NG Äáº¦U: Viáº¿t in Ä‘áº­m báº±ng chá»¯ HOA hoáº·c dÃ¹ng emoji âš¡ðŸ”¥âŒ má»Ÿ Ä‘áº§u Ä‘á»ƒ gÃ¢y chÃº Ã½ tá»©c thÃ¬. XoÃ¡y vÃ o Ná»—i Ä‘au, Sai láº§m, GÃ³c nhÃ¬n trÃ¡i chiá»u, Káº¿t quáº£ báº¥t ngá», hoáº·c CÃ¢u há»i tÃ² mÃ².
+- PHÃ‚N TÃCH CÃC PHáº¦N báº±ng dáº¥u â”â”â”â”â”â”â”â”â”â” hoáº·c emoji ðŸ‘‡ðŸ”½â–¶ï¸ Ä‘á»ƒ táº¡o nhá»‹p Ä‘á»c rÃµ rÃ ng, khÃ´ng nhÃ¬n thÃ nh má»™t khá»‘i chá»¯ dÃ y Ä‘áº·c.
+- Má»–I Ã CHÃNH báº¯t Ä‘áº§u báº±ng má»™t emoji phÃ¹ há»£p ná»™i dung (âœ… ðŸŽ¯ ðŸ’¡ ðŸ“Š ðŸš€ âš ï¸ ðŸ’° ðŸ”‘) rá»“i viáº¿t ngáº¯n 1 cÃ¢u, xuá»‘ng dÃ²ng ngay.
+- GIá»®A CÃC ÄOáº N Ä‘á»ƒ 1 dÃ²ng trá»‘ng táº¡o khoáº£ng thá»Ÿ cho máº¯t.
+- PHáº¦N CTA cuá»‘i bÃ i: TÃ¡ch háº³n báº±ng dáº¥u â”â”â” hoáº·c â”€â”€â”€â”€ rá»“i Ä‘áº·t cÃ¢u há»i má»Ÿ kÃ¨m emoji ðŸ’¬ðŸ¤”.
+- HASHTAG: TÃ¡ch riÃªng 1 khá»‘i á»Ÿ cuá»‘i cÃ¹ng, má»—i hashtag cÃ¡ch nhau 1 khoáº£ng tráº¯ng.
+
+**QUY Táº®C Ná»˜I DUNG:**
+  * Náº¿u GÃ³c nhÃ¬n yÃªu cáº§u lÃ  "Sinh trá»n bá»™ 7 bÃ i (Multi-Angle)": HÃ£y viáº¿t chi tiáº¿t 7 bÃ i viáº¿t Facebook hoÃ n toÃ n khÃ¡c biá»‡t tÆ°Æ¡ng á»©ng vá»›i 7 gÃ³c triá»ƒn khai á»Ÿ má»¥c 4, Ä‘Ã¡nh sá»‘ rÃµ rÃ ng "BÃ i 1 (GÃ³c sai láº§m phá»• biáº¿n)..." Ä‘áº¿n "BÃ i 7 (GÃ³c case study)...". Má»—i bÃ i váº«n tuÃ¢n thá»§ Ä‘áº§y Ä‘á»§ cÃ¡c quy táº¯c bÃªn dÆ°á»›i.
+  * NgÆ°á»£c láº¡i, viáº¿t 1 bÃ i viáº¿t chi tiáº¿t táº­p trung sÃ¢u vÃ o Ä‘Ãºng GÃ³c nhÃ¬n yÃªu cáº§u ({angle_selection}).
+- Ãp dá»¥ng cÃ¡c ká»¹ thuáº­t giá»¯ chÃ¢n (RETENTION ENGINE): Open Loop (má»Ÿ ra cÃ¢u há»i chÆ°a cÃ³ lá»i giáº£i ngay), Curiosity Gap (khoáº£ng cÃ¡ch tÃ² mÃ²), vÃ  Delayed Reveal (trÃ¬ hoÃ£n viá»‡c tiáº¿t lá»™ giáº£i phÃ¡p/thá»±c táº¿ quan trá»ng nháº¥t Ä‘áº¿n cuá»‘i bÃ i).
+- KhÃ©o lÃ©o chÃ¨n má»™t trong cÃ¡c cÃ¢u dáº«n dáº¯t ká»‹ch tÃ­nh sau: "NhÆ°ng Ä‘Ã³ chÆ°a pháº£i Ä‘iá»u quan trá»ng nháº¥t...", "Äiá»u báº¥t ngá» hÆ¡n lÃ ...", "VÃ  Ä‘Ã¢y má»›i lÃ  lÃ½ do tháº­t sá»±...", "Pháº§n lá»›n má»i ngÆ°á»i Ä‘á»u bá» qua Ä‘iá»u nÃ y...".
+- Äáº¶C BIá»†T: Náº¿u Ä‘á»‘i tÆ°á»£ng má»¥c tiÃªu lÃ  CEO, bÃ i viáº¿t Facebook PHáº¢I bá»• sung má»™t lá»›p phÃ¢n tÃ­ch ngáº¯n mang tÃªn "Executive Insight" á»Ÿ cuá»‘i bÃ i viáº¿t (ngay trÆ°á»›c pháº§n Hashtag) Ä‘á»ƒ Ä‘Ãºc rÃºt bÃ i há»c quáº£n trá»‹ cá»‘t lÃµi dÆ°á»›i lÄƒng kÃ­nh quáº£n trá»‹ há»‡ thá»‘ng, Ä‘Ã²n báº©y cÃ´ng nghá»‡ vÃ  quáº£n trá»‹ sá»± thay Ä‘á»•i, nÃ¢ng táº§m uy tÃ­n cá»§a tÃ¡c giáº£ nhÆ° má»™t nhÃ  tÆ° váº¥n chiáº¿n lÆ°á»£c hay chuyÃªn gia AI Ä‘áº§u ngÃ nh.
+- VIáº¾T Cá»°C Ká»² NGáº®N Gá»ŒN, XÃšC TÃCH: Tá»‘i Ä‘a KHÃ”NG QUÃ 800 KÃ Tá»° (bao gá»“m cáº£ khoáº£ng tráº¯ng) cho má»—i bÃ i viáº¿t. Má»—i Ä‘oáº¡n CHá»ˆ VIáº¾T 1 CÃ‚U DUY NHáº¤T rá»“i xuá»‘ng dÃ²ng. KhÃ´ng viáº¿t lan man, khÃ´ng giáº£i thÃ­ch dÃ i dÃ²ng. Æ¯u tiÃªn cÃ¢u ngáº¯n dÆ°á»›i 15 tá»«. Bá» má»i pháº§n thá»«a, chá»‰ giá»¯ láº¡i Ã½ cá»‘t lÃµi nháº¥t.
+- NgÃ´n ngá»¯ Ä‘Æ¡n giáº£n, gáº§n gÅ©i, Ä‘á»i thÆ°á»ng, giÃ u cáº£m xÃºc (tÃ² mÃ², Ä‘á»“ng cáº£m, ngáº¡c nhiÃªn, hy vá»ng, truyá»n cáº£m há»©ng). NhÃºng Emoji Ä‘a dáº¡ng theo ngá»¯ cáº£nh. Äáº¶C BIá»†T: Khi viáº¿t cho Ä‘á»‘i tÆ°á»£ng CEO hay ChuyÃªn gia AI, cáº§n tuyá»‡t Ä‘á»‘i trÃ¡nh cÃ¡c tá»« ngá»¯ cáº£m xÃºc phÃ³ng Ä‘áº¡i ráº» tiá»n.
+- KÃŠU Gá»ŒI TÆ¯Æ NG TÃC Tá»° NHIÃŠN (CTA): Há»i Ã½ kiáº¿n ngÆ°á»i Ä‘á»c báº±ng cÃ¡c cÃ¢u há»i má»Ÿ kÃ­ch thÃ­ch tháº£o luáº­n sÃ¢u (KhÃ´ng dÃ¹ng "Comment YES" hay "BÃ¬nh luáº­n tÃ´i muá»‘n").
+- Hashtag: ThÃªm 5-8 hashtag tá»‘i Æ°u SEO vÃ  viral á»Ÿ cuá»‘i má»—i bÃ i viáº¿t (#Marketing #AI #...).
+
+### 7. BÃ i Zalo
+Viáº¿t má»™t bÃ i Ä‘Äƒng Zalo hoÃ n chá»‰nh. Tá»I ÄA KHÃ”NG QUÃ 500 KÃ Tá»° (bao gá»“m cáº£ khoáº£ng tráº¯ng).
+
+**QUY Táº®C Bá» Cá»¤C TRÃŒNH BÃ€Y Báº®T Máº®T CHO ZALO (Báº®T BUá»˜C):**
+- DÃ’NG Äáº¦U TIÃŠN: Hook máº¡nh kÃ¨m emoji âš¡ðŸ”¥ viáº¿t ngáº¯n gá»n gÃ¢y tÃ² mÃ² tá»©c thÃ¬.
+- Má»–I Ã báº¯t Ä‘áº§u báº±ng emoji (âœ… ðŸ‘‰ ðŸ’¡ ðŸ“Œ ðŸŽ¯) rá»“i viáº¿t 1 cÃ¢u cá»±c ngáº¯n, xuá»‘ng dÃ²ng ngay.
+- GIá»®A CÃC Ã: Äá»ƒ 1 dÃ²ng trá»‘ng táº¡o khoáº£ng thá»Ÿ, trÃ¡nh viáº¿t chá»¯ dÃ­nh liá»n nhau.
+- PHáº¦N Káº¾T: DÃ¹ng emoji ðŸ’¬ hoáº·c ðŸ¤” má»Ÿ Ä‘áº§u cÃ¢u há»i CTA, tÃ¡ch riÃªng khá»i ná»™i dung chÃ­nh báº±ng dáº¥u â”€â”€â”€â”€.
+- VÄƒn phong gáº§n gÅ©i nhÆ° nháº¯n tin trá»±c tiáº¿p 1-1, má»—i Ã½ chá»‰ 1 cÃ¢u ngáº¯n rá»“i xuá»‘ng dÃ²ng.
+(LÆ°u Ã½: Náº¿u GÃ³c nhÃ¬n yÃªu cáº§u lÃ  "Sinh trá»n bá»™ 7 bÃ i (Multi-Angle)", hÃ£y viáº¿t tÃ³m táº¯t nhanh/bÃ i viáº¿t ngáº¯n gá»n tÆ°Æ¡ng á»©ng cho cáº£ 7 bÃ i Ä‘á»ƒ dá»… gá»­i Zalo).
+- Äáº¶C BIá»†T: Äá»‘i vá»›i CEO, bÃ i Zalo váº«n pháº£i giá»¯ chiá»u sÃ¢u chiáº¿n lÆ°á»£c vÃ  bá»• sung lá»›p "Executive Insight" tÃ³m táº¯t cá»±c ká»³ gá»n gÃ ng, sÃºc tÃ­ch, trÃ¡nh hoÃ n toÃ n cÃ¡c tá»« ngá»¯ sÃ¡o rá»—ng.
+
+### 8. Ká»‹ch báº£n Reels
+Má»™t ká»‹ch báº£n video ngáº¯n (Reels/TikTok) ká»‹ch tÃ­nh, háº¥p dáº«n vÃ  giá»¯ chÃ¢n ngÆ°á»i xem cao nháº¥t:
+- Hook video (3 giÃ¢y Ä‘áº§u tiÃªn cá»±c máº¡nh Ä‘á»ƒ giá»¯ chÃ¢n ngÆ°á»i xem)
+- Voice-over (Lá»i thuyáº¿t minh chi tiáº¿t tá»«ng cÃ¢u)
+- Cáº£nh quay (MÃ´ táº£ chi tiáº¿t hÃ¬nh áº£nh, hÃ nh Ä‘á»™ng cá»§a nhÃ¢n váº­t hoáº·c bá»‘i cáº£nh diá»…n ra trÃªn mÃ n hÃ¬nh)
+- Text Overlay (Chá»¯ lá»›n ná»•i báº­t hiá»ƒn thá»‹ trÃªn video tÆ°Æ¡ng á»©ng tá»«ng phÃ¢n cáº£nh)
+- CTA (Lá»i kÃªu gá»i hÃ nh Ä‘á»™ng cuá»‘n hÃºt á»Ÿ cuá»‘i)
+
+### 9. Caption Reels
+Viáº¿t caption Ä‘Äƒng kÃ¨m video Reels (2-3 dÃ²ng, tá»‘i Ä‘a 150 kÃ½ tá»±). YÃªu cáº§u báº¯t buá»™c:
+- Má»Ÿ Ä‘áº§u báº±ng má»™t "Open Loop" máº¡nh máº½, gá»£i má»Ÿ cÃ¢u há»i chÆ°a cÃ³ cÃ¢u tráº£ lá»i rÃµ rÃ ng Ä‘á»ƒ kÃ­ch thÃ­ch sá»± tÃ² mÃ² (VÃ­ dá»¥: "90% doanh nghiá»‡p Ä‘ang pháº£i tráº£ giÃ¡ Ä‘áº¯t cho má»™t sai láº§m vÃ´ hÃ¬nh...", "TÃ´i Ä‘Ã£ máº¥t hÃ ng nghÃ¬n USD chi phÃ­ váº­n hÃ nh trÆ°á»›c khi nháº­n ra Ä‘iá»u nÃ y...").
+- TUYá»†T Äá»I KHÃ”NG dÃ¹ng ngÃ´n ngá»¯ quáº£ng cÃ¡o, giáº­t gÃ¢n, kÃªu gá»i mua hÃ ng hay PR sÃ¡o rá»—ng.
+- Äá»I Vá»šI CEO / ChuyÃªn gia AI / NhÃ  Ä‘áº§u tÆ°: Caption pháº£i lÃ  má»™t lÃ¡t cáº¯t tÆ° duy quáº£n trá»‹ hoáº·c insight Ä‘iá»u hÃ nh sÃ¢u sáº¯c (VÃ­ dá»¥: "CÃ´ng nghá»‡ khÃ´ng giáº£i quyáº¿t Ä‘Æ°á»£c lá»— há»•ng cáº¥u trÃºc. Há»‡ thá»‘ng váº­n hÃ nh má»›i lÃ  Ä‘Ã²n báº©y thá»±c táº¿."). Ná»™i dung pháº£i giá»‘ng nhÆ° má»™t dÃ²ng tráº¡ng thÃ¡i Ä‘Ãºc rÃºt kinh nghiá»‡m cá»§a má»™t chuyÃªn gia chiáº¿n lÆ°á»£c trÃªn LinkedIn.
+
+### 10. CTA
+Danh sÃ¡ch cÃ¡c cÃ¢u há»i gá»£i má»Ÿ tháº£o luáº­n sÃ¢u sáº¯c dÃ nh riÃªng cho Ä‘á»‘i tÆ°á»£ng "{target}" liÃªn quan Ä‘áº¿n chá»§ Ä‘á» nÃ y.
+
+### 11. Thumbnail Titles
+ÄÆ°a ra Ä‘Ãºng 3 tiÃªu Ä‘á» áº£nh Thumbnail (ngáº¯n gá»n, dÆ°á»›i 7 tá»«, viáº¿t HOA toÃ n bá»™) tÆ°Æ¡ng á»©ng vá»›i 3 bá»‘i cáº£nh áº£nh bÃªn dÆ°á»›i.
+- Äá»‘i vá»›i CEO/ChuyÃªn gia AI/NhÃ  Ä‘áº§u tÆ°: TiÃªu Ä‘á» pháº£i mang chiá»u sÃ¢u chiáº¿n lÆ°á»£c vÃ  quáº£n trá»‹, trÃ¡nh cáº£m giÃ¡c cÃ¢u view ráº» tiá»n (VÃ­ dá»¥: "Tá»° Äá»˜NG HÃ“A Váº¬N HÃ€NH").
+- Äá»‘i vá»›i cÃ¡c nhÃ³m khÃ¡c: TiÃªu Ä‘á» dáº¡ng clickbait kÃ­ch thÃ­ch tÃ² mÃ² (VÃ­ dá»¥: "AI Sáº®P THAY Äá»”I Má»ŒI THá»¨").
+
+### 12. AI Thumbnail Prompts
+Táº¡o Ä‘Ãºng 3 prompt váº½ áº£nh AI báº±ng tiáº¿ng Anh (DÃ nh cho Midjourney, DALL-E 3) tÆ°Æ¡ng á»©ng cho 3 bá»‘i cáº£nh:
+1. Bá»‘i cáº£nh CÃ´ng nghá»‡ (Technology)
+2. Bá»‘i cáº£nh Doanh nhÃ¢n (Entrepreneur)
+3. Bá»‘i cáº£nh An toÃ n cho Quáº£ng cÃ¡o Facebook (Facebook Ads Safe)
+* Má»—i prompt Báº®T BUá»˜C pháº£i tÃ­ch há»£p chÃ­nh xÃ¡c hai yáº¿u tá»‘ sau lá»“ng trá»±c tiáº¿p vÃ o thiáº¿t káº¿ áº£nh:
+- TiÃªu Ä‘á» Thumbnail tÆ°Æ¡ng á»©ng tá»« Má»¥c 11 dÆ°á»›i dáº¡ng chá»¯ Typography ná»•i báº­t, tinh táº¿ trÃªn áº£nh (clean typography overlay text).
+- Website `"hungvietai.com" á»Ÿ gÃ³c dÆ°á»›i bÃªn pháº£i áº£nh` dÆ°á»›i dáº¡ng watermark nhá» gá»n, tinh xáº£o (small elegant white text "hungvietai.com" watermark in the bottom-right corner).
+* Äá»‹nh dáº¡ng báº¯t buá»™c: [Subject] + [Emotion] + [Cinematic Lighting] + [Professional Composition] + [Ultra Detailed] + [Social Media Thumbnail Style] + [clean typography overlay text "THUMBNAIL_TITLE_HERE"] + [small elegant white text "hungvietai.com" watermark in the bottom-right corner]
+VÃ­ dá»¥: "A futuristic AI robot working on multiple screens, focused emotion, warm cinematic lighting, close-up professional composition, ultra detailed, social media thumbnail style, clean typography overlay text 'AUTOMATE PROCESSES', small elegant white text 'hungvietai.com' watermark in the bottom-right corner"
+
+### 13. Hashtags
+Danh sÃ¡ch 5-8 hashtag tá»‘i Æ°u SEO vÃ  cÃ³ Ä‘á»™ lan truyá»n cao nháº¥t cho chá»§ Ä‘á» nÃ y.
+
+### 14. Viral Score (1-10)
+ÄÃ¡nh giÃ¡ khÃ¡ch quan Ä‘iá»ƒm sá»‘ tiá»m nÄƒng lan truyá»n cá»§a bá»™ ná»™i dung nÃ y tá»« 1 Ä‘áº¿n 10 dá»±a trÃªn tÃ­nh giáº­t gÃ¢n, cháº¥t lÆ°á»£ng bÃ i viáº¿t vÃ  má»©c Ä‘á»™ thu hÃºt Ä‘á»‘i tÆ°á»£ng má»¥c tiÃªu.
+
+### 15. LÃ½ do cháº¥m Ä‘iá»ƒm
+PhÃ¢n tÃ­ch ngáº¯n gá»n lÃ½ do vÃ¬ sao bá»™ ná»™i dung nÃ y Ä‘áº¡t Ä‘Æ°á»£c Ä‘iá»ƒm sá»‘ Ä‘Ã³, chá»‰ ra Ä‘iá»ƒm sÃ¡ng giÃ¡ nháº¥t giÃºp tÄƒng Reach, Engagement hoáº·c Comment.
+
+---
+LÆ¯U Ã QUAN TRá»ŒNG Vá»€ Äá»ŠNH HÆ¯á»šNG VÄ‚N PHONG VÃ€ NGÃ”N NGá»® (Báº®T BUá»˜C PHáº¢I TUÃ‚N THá»¦):
+
+1. Äá»I Vá»šI Äá»I TÆ¯á»¢NG "CEO (Chiáº¿n lÆ°á»£c, TÄƒng trÆ°á»Ÿng, Lá»£i nhuáº­n)" HOáº¶C "ChuyÃªn gia AI (AI Agent, Automation, CÃ´ng nghá»‡)" HOáº¶C "NhÃ  Ä‘áº§u tÆ° (Xu hÆ°á»›ng, ROI, CÆ¡ há»™i)":
+- BÃ€I VIáº¾T PHáº¢I CÃ“ PHONG THÃI Cá»¦A Má»˜T CEO ÄIá»€U HÃ€NH HOáº¶C CHUYÃŠN GIA TÆ¯ Váº¤N CHIáº¾N LÆ¯á»¢C Cáº¤P CAO (NHÆ¯ MCKINSEY, BCG), TUYá»†T Äá»I KHÃ”NG PHáº¢I BÃ€I MARKETING Cá»¦A COPYWRITER QUáº¢NG CÃO.
+- NGHIÃŠM Cáº¤M TUYá»†T Äá»I (BLACKLIST) Sá»¬ Dá»¤NG CÃC Tá»ª NGá»® QUáº¢NG CÃO SÃO Rá»–NG, Cáº¢M TÃNH, PHÃ“NG Äáº I, GIáº¬T GÃ‚N SAU ÄÃ‚Y: "phÃ©p mÃ u", "minh chá»©ng hÃ¹ng há»“n", "Ã¢m tháº§m táº¡o ra", "Ä‘Ã¡ng kinh ngáº¡c", "ngoáº¡n má»¥c", "tháº§n ká»³", "bÃ­ máº­t", "tháº§n tá»‘c", "vi diá»‡u", "ká»³ tÃ­ch", "Ä‘á»™t phÃ¡ ngoáº¡n má»¥c", "vÅ© khÃ­ tá»‘i tÃ¢n". Náº¿u sá»­ dá»¥ng báº¥t ká»³ tá»« nÃ o trong sá»‘ nÃ y, bÃ i viáº¿t sáº½ bá»‹ coi lÃ  tháº¥t báº¡i nghiÃªm trá»ng.
+- THAY VÃ€O ÄÃ“, Báº®T BUá»˜C sá»­ dá»¥ng tÆ° duy Ä‘iá»u hÃ nh quáº£n trá»‹ doanh nghiá»‡p (Executive Mindset), tÆ° duy há»‡ thá»‘ng vÃ  vÄƒn phong thá»±c chá»©ng, Ä‘iá»m Ä‘áº¡m, Ä‘áº³ng cáº¥p, chuyÃªn nghiá»‡p.
+- PHáº¢I tÄƒng cÆ°á»ng tá»‘i Ä‘a dá»¯ liá»‡u thá»±c chá»©ng (Data-driven), chá»‰ sá»‘ Ä‘o lÆ°á»ng thá»±c táº¿ (KPI, ROI, OpEx - chi phÃ­ váº­n hÃ nh, CapEx - chi phÃ­ Ä‘áº§u tÆ°, LTV - giÃ¡ trá»‹ trá»n Ä‘á»i khÃ¡ch hÃ ng, CAC - chi phÃ­ sá»Ÿ há»¯u khÃ¡ch hÃ ng, tá»· lá»‡ chuyá»ƒn Ä‘á»•i, tá»· suáº¥t lá»£i nhuáº­n rÃ²ng).
+- PHáº¢I sá»­ dá»¥ng cÃ¡c thuáº­t ngá»¯ quáº£n trá»‹ vÃ  cÃ´ng nghá»‡ chuáº©n xÃ¡c: "chuá»—i giÃ¡ trá»‹ (value chain)", "Ä‘Ã²n báº©y quy mÃ´", "mÃ´ hÃ¬nh váº­n hÃ nh tÃ­ch há»£p (operating model)", "tá»‘i Æ°u hÃ³a tÃ i nguyÃªn", "quáº£n trá»‹ rá»§i ro há»‡ thá»‘ng", "quáº£n trá»‹ sá»± thay Ä‘á»•i (change management)", "tá»± Ä‘á»™ng hÃ³a quy trÃ¬nh nghiá»‡p vá»¥ (BPA)", "mÃ´ hÃ¬nh ngÃ´n ngá»¯ lá»›n (LLM)", "háº¡ táº§ng dá»¯ liá»‡u (data infrastructure)", "hiá»‡u suáº¥t nhÃ¢n sá»±", "nÄƒng lá»±c cá»‘t lÃµi (core competency)".
+- PhÃ¢n tÃ­ch sÃ¢u sáº¯c cÃ¡c rÃ o cáº£n thá»±c táº¿ vá» vÄƒn hÃ³a doanh nghiá»‡p, bÃ i toÃ¡n chuyá»ƒn Ä‘á»•i sá»‘ tá»« gÃ³c nhÃ¬n cá»§a ban Ä‘iá»u hÃ nh cáº¥p cao chá»© khÃ´ng chá»‰ ca ngá»£i cÃ´ng nghá»‡ Ä‘Æ¡n thuáº§n.
+- Äáº¶C BIá»†T: Bá»• sung lá»›p "Executive Insight" ngay sau pháº§n Case Study (má»¥c 4.7) vÃ  á»Ÿ pháº§n cuá»‘i cá»§a BÃ i Facebook (má»¥c 6), BÃ i Zalo (má»¥c 7) khi Ä‘á»‘i tÆ°á»£ng má»¥c tiÃªu lÃ  CEO / ChuyÃªn gia AI / NhÃ  Ä‘áº§u tÆ°.
+
+2. Äá»I Vá»šI CÃC Äá»I TÆ¯á»¢NG KHÃC:
+- Sales: Chá»‘t sale tháº§n tá»‘c, KhÃ¡ch hÃ ng tiá»m nÄƒng, BÃ¹ng ná»• doanh sá»‘. VÄƒn phong thá»±c chiáº¿n, nÄƒng Ä‘á»™ng.
+- Chá»§ Shop: Quáº£n lÃ½ Ä‘Æ¡n hÃ ng, Marketing hiá»‡u quáº£, Quáº£ng cÃ¡o ra Ä‘Æ¡n ráº». VÄƒn phong gáº§n gÅ©i, thá»±c táº¿.
+- Freelancer: ThÆ°Æ¡ng hiá»‡u cÃ¡ nhÃ¢n, Gia tÄƒng thu nháº­p, KhÃ¡ch hÃ ng cháº¥t lÆ°á»£ng. VÄƒn phong tá»± do, truyá»n cáº£m há»©ng.
+
+Xuáº¥t ra toÃ n bá»™ 15 pháº§n theo Ä‘Ãºng sá»‘ thá»© tá»± rÃµ rÃ ng tá»« 1 Ä‘áº¿n 15. KhÃ´ng giáº£i thÃ­ch gÃ¬ thÃªm ngoÃ i cáº¥u trÃºc Ä‘Æ°á»£c yÃªu cáº§u.
+"""
+                        if content_type == "AI Knowledge Sharing":
+                            content = generate_ai_knowledge_content(ai_tool, topic, ai_audience, ai_difficulty, ai_knowledge_type)
+                        if content_type != "AI Knowledge Sharing":
+                            content = model.generate_content(prompt).text
+                            content += "\n\nðŸŒ Website: hungvietai.com"
+                        st.session_state['current_content'] = content
+                        if content_type == "AI Knowledge Sharing":
+                            st.session_state['current_knowledge_metadata'] = {
+                                "id": "current",
+                                "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "platform": platform,
+                                "topic": topic,
+                                "audience": ai_audience,
+                                "tool_name": ai_tool,
+                                "knowledge_type": ai_knowledge_type,
+                                "difficulty": ai_difficulty,
+                                "summary": build_content_summary(content),
+                                "status": "Bản nháp hiện tại",
+                                "content": content,
+                            }                        # TrÃ­ch xuáº¥t thÃ´ng minh Thumbnail Titles vÃ  AI Thumbnail Prompts tá»« ná»™i dung 15 má»¥c
+                        extracted_prompt = ""
+                        try:
+                            start_kw = "### 11. Thumbnail Titles"
+                            end_kw = "### 13. Hashtags"
+                            
+                            start_idx = content.find(start_kw)
+                            if start_idx == -1:
+                                start_idx = content.find("11. Thumbnail Titles")
+                                
+                            if start_idx != -1:
+                                end_idx = content.find(end_kw)
+                                if end_idx == -1:
+                                    end_idx = content.find("13. Hashtags")
+                                
+                                if end_idx != -1 and end_idx > start_idx:
+                                    extracted_prompt = content[start_idx:end_idx].strip()
+                                else:
+                                    extracted_prompt = content[start_idx:].strip()
+                        except:
+                            pass
+                        if content_type == "AI Knowledge Sharing":
+                            st.session_state['current_image_prompt'] = ""
+                        else:
+                            st.session_state['current_image_prompt'] = extracted_prompt if extracted_prompt else "Vui long xem Muc 11 va 12 truc tiep trong bai viet phia tren."
+    
+                        # LÆ°u DB (Máº·c Ä‘á»‹nh cho trÆ°á»ng há»£p khÃ´ng Auto-post váº«n lÆ°u nhÃ¡p)
+                        db_status = "ÄÃ£ táº¡o báº£n nhÃ¡p"
+    
+                        # Xá»­ lÃ½ tá»± Ä‘á»™ng Ä‘Äƒng
+                        if auto_post:
+                            status_msg = ""
+                            success_any = False
+                            if platform in ["Facebook", "Táº¥t cáº£"]:
+                                success, msg = post_to_facebook(content)
+                                status_msg += f"FB: {msg} | "
+                                if success: success_any = True
+                            if platform in ["Zalo OA", "Táº¥t cáº£"]:
+                                success, msg = post_to_zalo_oa(content)
+                                status_msg += f"Zalo: {msg} | "
+                                if success: success_any = True
+                            if platform in ["LinkedIn", "Táº¥t cáº£"]:
+                                success, msg = post_to_linkedin(content)
+                                status_msg += f"LinkedIn: {msg}"
+                                if success: success_any = True
+    
+                            st.session_state['last_post_status'] = status_msg
+                            if success_any:
+                                db_status = "ÄÃ£ Ä‘Äƒng"
+                        else:
+                            st.session_state['last_post_status'] = None
+    
+                        # Ghi nháº­n lá»‹ch sá»­ bÃ i viáº¿t vÃ o DB
+                        post_date = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        c.execute("INSERT INTO posts (date, platform, topic, content, status, content_type) VALUES (?,?,?,?,?,?)",
+                                  (post_date, platform, topic, content, db_status, content_type))
+                        conn.commit()
+                        conn.close()
+
+                        if content_type == "AI Knowledge Sharing":
+                            save_knowledge_post(
+                                date=post_date,
+                                platform=platform,
+                                topic=topic,
+                                audience=ai_audience,
+                                tool_name=ai_tool,
+                                knowledge_type=ai_knowledge_type,
+                                difficulty=ai_difficulty,
+                                content=content,
+                                status=db_status
+                            )
+    
+                    except Exception as e:
+                        if "429" in str(e):
+                            st.error("ðŸš« Háº¿t háº¡n má»©c API (Quota Exceeded). Vui lÃ²ng thá»­ láº¡i sau vÃ i phÃºt.")
+                        else:
+                            st.error(f"Lá»—i khi xá»­ lÃ½: {e}")
+
+    # ===== HIá»‚N THá»Š Káº¾T QUáº¢ Tá»ª SESSION STATE =====
+    if 'current_content' in st.session_state:
+        st.success("âœ¨ ÄÃ£ táº¡o ná»™i dung bÃ i Ä‘Äƒng xong!")
+        st.markdown(st.session_state['current_content'])
+        
+    if st.session_state.get('current_image_prompt'):
+        st.subheader("ðŸŽ¨ Prompt váº½ áº£nh AI (Tiáº¿ng Anh)")
+        st.info("Copy Ä‘oáº¡n há»™i thoáº¡i dÆ°á»›i Ä‘Ã¢y Ä‘á»ƒ dÃ¡n vÃ o cÃ¡c cÃ´ng cá»¥ váº½ áº£nh AI nhÆ° Midjourney, DALL-E, Bing Image Creator...")
+        st.code(st.session_state['current_image_prompt'], language='markdown')
+        
+    if 'last_post_status' in st.session_state and st.session_state['last_post_status']:
+        st.info(st.session_state['last_post_status'])
+        
+    if 'current_content' in st.session_state:
+        st.divider()
+        if st.session_state.get('last_content_type') == "AI Knowledge Sharing":
+            current_knowledge = st.session_state.get('current_knowledge_metadata', {
+                "id": "current",
+                "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "platform": platform,
+                "topic": st.session_state.get('last_topic', 'AI Knowledge'),
+                "audience": "",
+                "tool_name": "",
+                "knowledge_type": "",
+                "difficulty": "",
+                "summary": build_content_summary(st.session_state['current_content']),
+                "status": "Bản nháp hiện tại",
+                "content": st.session_state['current_content'],
+            })
+            col_current_pdf, col_current_docx, col_current_csv = st.columns([1, 1, 1])
+            with col_current_pdf:
+                current_pdf = export_knowledge_to_pdf(current_knowledge)
+                if current_pdf:
+                    st.download_button("Tải AI Knowledge PDF", data=current_pdf, file_name="AI_Knowledge_Current.pdf", mime="application/pdf")
+            with col_current_docx:
+                current_docx = export_knowledge_to_docx(current_knowledge)
+                if current_docx:
+                    st.download_button("Tải AI Knowledge DOCX", data=current_docx, file_name="AI_Knowledge_Current.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            with col_current_csv:
+                current_csv_df = pd.DataFrame([current_knowledge])
+                st.download_button("Tải AI Knowledge CSV", data=export_knowledge_to_csv(current_csv_df), file_name="AI_Knowledge_Current.csv", mime="text/csv")
+        else:
+            pdf_bytes = export_post_to_pdf(
+                st.session_state.get('last_topic', 'BÃ i viáº¿t má»›i'),
+                platform,
+                st.session_state['current_content'],
+                st.session_state.get('current_image_prompt', '')
+            )
+            if pdf_bytes:
+                st.download_button("ðŸ“© Táº£i bÃ i viáº¿t nÃ y (PDF)", data=pdf_bytes, file_name="Bai_Viet_AI.pdf", mime="application/pdf")
+
+with tab_history:
+    st.header("Kho lÆ°u trá»¯ & Xuáº¥t Dá»¯ Liá»‡u")
+    conn = sqlite3.connect('content_manager.db')
+    df = pd.read_sql_query("SELECT * FROM posts ORDER BY id DESC", conn)
+    conn.close()
+
+    if not df.empty:
+        st.info("ðŸ’¡ **Máº¹o:** Nháº¥p vÃ o má»™t dÃ²ng trong báº£ng bÃªn dÆ°á»›i Ä‘á»ƒ chá»n bÃ i viáº¿t muá»‘n táº£i PDF chuyÃªn nghiá»‡p.")
+        
+        # Sá»­ dá»¥ng tÃ­nh nÄƒng chá»n dÃ²ng cá»§a Streamlit 1.55+
+        selection = st.dataframe(
+            df, 
+            use_container_width=True, 
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+
+        # Kiá»ƒm tra xem cÃ³ dÃ²ng nÃ o Ä‘Æ°á»£c chá»n khÃ´ng
+        selected_rows = selection.get("selection", {}).get("rows", [])
+        
+        if selected_rows:
+            selected_idx = selected_rows[0]
+            row = df.iloc[selected_idx]
+            
+            st.markdown(f"### ðŸ“‹ ÄÃ£ chá»n: {row['topic'][:100]}")
+            
+            col_pdf_one, col_pdf_all, col_csv = st.columns([1, 1, 1])
+            with col_pdf_one:
+                pdf_bytes_hist = export_post_to_pdf(row['topic'], row['platform'], row['content'])
+                if pdf_bytes_hist:
+                    st.download_button(f"ðŸ“¥ Táº£i PDF BÃ i chá»n", data=pdf_bytes_hist, file_name=f"Post_{row['id']}.pdf")
+            with col_pdf_all:
+                pdf_all = export_all_posts_to_pdf(df)
+                if pdf_all:
+                    st.download_button("ðŸ“‚ Xuáº¥t Táº¥t cáº£ (PDF)", data=pdf_all, file_name="Bao_Cao_Lich_Su.pdf")
+            with col_csv:
+                csv_all = df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("ðŸ“Š Xuáº¥t Táº¥t cáº£ (CSV)", csv_all, "full_history.csv")
+        else:
+            col_down1, col_down2, _ = st.columns([1, 1, 2])
+            with col_down1:
+                pdf_all = export_all_posts_to_pdf(df)
+                if pdf_all:
+                    st.download_button("ðŸ“‚ Xuáº¥t Táº¥t cáº£ dá»¯ liá»‡u (.PDF)", data=pdf_all, file_name="Bao_Cao_Lich_Su.pdf")
+            with col_down2:
+                csv_all = df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("ðŸ“Š Xuáº¥t Táº¥t cáº£ (.CSV)", csv_all, "full_history.csv")
+            
+    else:
+        st.info("ChÆ°a cÃ³ lá»‹ch sá»­ bÃ i viáº¿t.")
+    st.divider()
+    st.subheader("AI Knowledge Export")
+    df_knowledge = get_knowledge_posts()
+
+    if not df_knowledge.empty:
+        st.caption("Chọn một nội dung AI Knowledge để export PDF/DOCX, hoặc tải toàn bộ metadata bằng CSV.")
+        knowledge_selection = st.dataframe(
+            df_knowledge,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="knowledge_export_table"
+        )
+        knowledge_rows = knowledge_selection.get("selection", {}).get("rows", [])
+
+        if knowledge_rows:
+            knowledge_row = df_knowledge.iloc[knowledge_rows[0]]
+            st.markdown(f"### AI Knowledge đã chọn: {str(knowledge_row['topic'])[:100]}")
+            col_k_pdf, col_k_docx, col_k_csv = st.columns([1, 1, 1])
+            with col_k_pdf:
+                knowledge_pdf = export_knowledge_to_pdf(knowledge_row)
+                if knowledge_pdf:
+                    st.download_button(
+                        "Tải AI Knowledge PDF",
+                        data=knowledge_pdf,
+                        file_name=f"AI_Knowledge_{knowledge_row['id']}.pdf",
+                        mime="application/pdf"
+                    )
+            with col_k_docx:
+                knowledge_docx = export_knowledge_to_docx(knowledge_row)
+                if knowledge_docx:
+                    st.download_button(
+                        "Tải AI Knowledge DOCX",
+                        data=knowledge_docx,
+                        file_name=f"AI_Knowledge_{knowledge_row['id']}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
+            with col_k_csv:
+                st.download_button(
+                    "Tải metadata CSV",
+                    data=export_knowledge_to_csv(df_knowledge),
+                    file_name="ai_knowledge_metadata.csv",
+                    mime="text/csv"
+                )
+        else:
+            st.download_button(
+                "Tải toàn bộ AI Knowledge CSV",
+                data=export_knowledge_to_csv(df_knowledge),
+                file_name="ai_knowledge_metadata.csv",
+                mime="text/csv"
+            )
+    else:
+        st.info("Chưa có nội dung AI Knowledge để export.")
+
+
+
+
+
+
+

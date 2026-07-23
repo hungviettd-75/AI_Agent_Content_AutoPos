@@ -1,8 +1,8 @@
 ﻿"""Streamlit shell for AI Content Strategy Center.
 
 The route remains the existing Content Planning Wizard tab, but the screen now
-hosts the Strategy Center wizard shell. This file intentionally does not call AI
-providers; generation is routed through backend services.
+hosts the Strategy Center wizard shell. Most Strategy Center generation is routed
+through backend services; the logistics planner can request Gemini topic calendars.
 """
 
 from __future__ import annotations
@@ -69,6 +69,7 @@ from services.content_strategy_service import (
     validate_persona_completeness,
     validate_subtopics,
 )
+from services.gemini_client import generate_weekly_plan_json
 from database.repositories.content_strategy_repository import ContentStrategyRepository
 from config.logistics_vertical import (
     LOGISTICS_ANGLES,
@@ -1944,7 +1945,7 @@ def _render_navigation(state: dict, service, workspace_id, company_id, can_edit,
 
 def render_tab_content_planning_wizard(gemini_key=None, workspace_id: int = None, role="editor", user_id: int = None, user_email: str = ""):
     """Render a 365-day content planning engine based on D:\1.docx."""
-    del gemini_key, user_email
+    del user_email
     role = (role or "viewer").lower()
     can_edit = user_can_edit(role)
     planner_key = f"content_365_planner_{workspace_id or 'none'}"
@@ -1984,61 +1985,115 @@ def render_tab_content_planning_wizard(gemini_key=None, workspace_id: int = None
         "AI thay đổi CEO", "Công cụ AI", "Case Study", "Tranh luận", "Prompt", "AI Agent", "ROI", "AI Marketing", "AI Sales", "AI HR", "AI Finance", "Tin AI + góc nhìn doanh nghiệp", "Sai lầm khi dùng AI", "Case Study", "AI Automation", "AI Customer Service", "Prompt CEO", "AI và nhân sự", "Tranh luận", "AI tạo video", "AI lập trình", "Chuyển đổi số", "ROI", "AI Agent", "AI trong sản xuất", "AI trong Logistics", "AI trong tài chính", "AI trong Marketing", "AI trong quản trị", "Dự đoán AI",
     ]
 
-    def weighted_groups(days: int) -> list[str]:
-        expanded = []
-        for item in active_content_mix:
-            expanded.extend([item["group"]] * item["ratio"])
-        return [expanded[i % len(expanded)] for i in range(days)]
 
-    def build_calendar(days: int, start: date, industry: str, target: str, selected_platforms: list[str], distribution: str, posts_per_day: int) -> pd.DataFrame:
+    def _json_compact(value) -> str:
+        return json.dumps(value, ensure_ascii=False, default=str)
+
+    def _build_ai_calendar_prompt(days: int, start: date, industry: str, target: str, selected_platforms: list[str], distribution: str, posts_per_day: int) -> str:
+        total_posts = max(1, days * posts_per_day)
+        platform_rule = "Dùng một chủ đề cho tất cả nền tảng trong cùng ngày." if distribution == "Một chủ đề dùng cho tất cả nền tảng" else "Luân phiên nền tảng giữa các bài."
+        return f"""
+Bạn là AI Content Strategist chuyên lập lịch nội dung B2B bằng tiếng Việt.
+
+Hãy tạo lịch chủ đề nội dung bằng AI cho doanh nghiệp/ngành sau:
+- Ngành: {industry}
+- Đối tượng mục tiêu: {target}
+- Ngày bắt đầu: {start.isoformat()}
+- Số ngày: {days}
+- Số bài/ngày: {posts_per_day}
+- Tổng số bài cần tạo: {total_posts}
+- Nền tảng: {", ".join(selected_platforms or platforms)}
+- Cách phân phối: {distribution}. {platform_rule}
+
+Ngữ cảnh định hướng, có thể dùng để tham khảo nhưng không được sao chép máy móc:
+- Tỷ lệ nhóm nội dung: {_json_compact(active_content_mix)}
+- Pillar/subtopic gợi ý: {_json_compact(active_pillar_bank)}
+- Góc khai thác gợi ý: {_json_compact(active_angles)}
+- Định dạng hợp lệ: {_json_compact(formats)}
+
+Yêu cầu chất lượng:
+- Mỗi bài phải có chủ đề cụ thể, không trùng ý trực diện.
+- Chủ đề phải phù hợp ngành, đối tượng mục tiêu, nền tảng và có tính ứng dụng.
+- Nếu tạo nhiều ngày, hãy phân bổ cân bằng giữa giáo dục, case study, ROI, tranh luận, hướng dẫn và niềm tin thương hiệu.
+- Không bịa số liệu cụ thể nếu không có ngữ cảnh; nếu cần số liệu, dùng cách diễn đạt như "giảm chi phí", "tăng tỷ lệ", "rút ngắn thời gian".
+
+Chỉ trả về JSON Array thuần túy, không markdown, không giải thích.
+Mỗi object bắt buộc có đúng các field:
+"day", "date", "platform", "industry", "group", "pillar", "format", "topic", "target", "angle", "hook", "problem", "solution", "cta".
+"""
+
+    def _build_calendar_from_ai(items: list, days: int, start: date, industry: str, target: str, selected_platforms: list[str], distribution: str, posts_per_day: int) -> pd.DataFrame:
         selected_platforms = selected_platforms or platforms
         rows = []
         used_topics = set()
-        groups = weighted_groups(max(days * posts_per_day, 1))
-        sequence = 0
-        for day_offset in range(days):
-            publish_date = start + timedelta(days=day_offset)
-            for slot in range(posts_per_day):
-                group = groups[sequence % len(groups)]
-                mix_item = next((item for item in active_content_mix if item["group"] == group), active_content_mix[0])
-                pillar = mix_item["pillars"][(sequence + day_offset) % len(mix_item["pillars"])]
-                base_topics = active_pillar_bank.get(pillar, [pillar])
-                subtopic = base_topics[(sequence * 3 + day_offset) % len(base_topics)]
-                angle = active_angles[(sequence + day_offset * 2) % len(active_angles)]
-                fmt = formats[(sequence + slot) % len(formats)]
-                if distribution == "Một chủ đề dùng cho tất cả nền tảng":
-                    platform = " + ".join(selected_platforms)
-                    platform_slug = "all"
-                else:
-                    platform = selected_platforms[sequence % len(selected_platforms)]
-                    platform_slug = platform.lower()
-                topic = f"{subtopic} trong ngành {industry}: {angle}"
-                guard = 1
-                unique_topic = topic
-                while unique_topic.lower() in used_topics:
-                    guard += 1
-                    unique_topic = f"{topic} - góc {guard}"
-                used_topics.add(unique_topic.lower())
-                rows.append({
-                    "Ngày": publish_date.isoformat(),
-                    "Tuần": int(((publish_date - start).days // 7) + 1),
-                    "Tháng": publish_date.strftime("%Y-%m"),
-                    "Nền tảng": platform,
-                    "platform_slug": platform_slug,
-                    "Ngành": industry,
-                    "Nhóm nội dung": group,
-                    "Pillar": pillar,
-                    "Định dạng": fmt,
-                    "Chủ đề": unique_topic,
-                    "Hook 3 dòng đầu": f"Nếu {target} bỏ qua {subtopic.lower()}, điều gì sẽ xảy ra trong 90 ngày tới?",
-                    "Vấn đề": f"{target} cần một cách nhìn thực tế về {subtopic.lower()} thay vì chỉ chạy theo xu hướng.",
-                    "Giải pháp AI": f"Biến {subtopic.lower()} thành quy trình AI có mục tiêu, dữ liệu đầu vào, người chịu trách nhiệm và KPI rõ ràng.",
-                    "Góc khác biệt": angle,
-                    "CTA": "Doanh nghiệp của bạn đang gặp điểm nghẽn nào nhất ở chủ đề này?",
-                    "Trạng thái": "planned",
-                })
-                sequence += 1
+        total_posts = max(1, days * posts_per_day)
+        default_pillar = next(iter(active_pillar_bank.keys()), "Content")
+        for index in range(total_posts):
+            raw = items[index] if index < len(items) and isinstance(items[index], dict) else {}
+            day_number = index // max(1, posts_per_day)
+            publish_date = start + timedelta(days=day_number)
+            if distribution == "Một chủ đề dùng cho tất cả nền tảng":
+                platform = " + ".join(selected_platforms)
+                platform_slug = "all"
+            else:
+                platform = str(raw.get("platform") or selected_platforms[index % len(selected_platforms)])
+                platform_slug = platform.lower()
+            group = str(raw.get("group") or active_content_mix[index % len(active_content_mix)]["group"])
+            pillar = str(raw.get("pillar") or default_pillar)
+            angle = str(raw.get("angle") or active_angles[index % len(active_angles)])
+            fmt = str(raw.get("format") or formats[index % len(formats)])
+            topic = str(raw.get("topic") or f"{pillar} trong ngành {industry}: {angle}").strip()
+            guard = 1
+            unique_topic = topic
+            while unique_topic.lower() in used_topics:
+                guard += 1
+                unique_topic = f"{topic} - góc {guard}"
+            used_topics.add(unique_topic.lower())
+            rows.append({
+                "Ngày": publish_date.isoformat(),
+                "Tuần": int(((publish_date - start).days // 7) + 1),
+                "Tháng": publish_date.strftime("%Y-%m"),
+                "Nền tảng": platform,
+                "platform_slug": platform_slug,
+                "Ngành": str(raw.get("industry") or industry),
+                "Nhóm nội dung": group,
+                "Pillar": pillar,
+                "Định dạng": fmt,
+                "Chủ đề": unique_topic,
+                "Hook 3 dòng đầu": str(raw.get("hook") or f"Nếu {target} bỏ qua {pillar.lower()}, điều gì sẽ xảy ra trong 90 ngày tới?"),
+                "Vấn đề": str(raw.get("problem") or f"{target} cần một cách nhìn thực tế về {pillar.lower()} thay vì chỉ chạy theo xu hướng."),
+                "Giải pháp AI": str(raw.get("solution") or f"Biến {pillar.lower()} thành quy trình AI có mục tiêu, dữ liệu đầu vào, người chịu trách nhiệm và KPI rõ ràng."),
+                "Góc khác biệt": angle,
+                "CTA": str(raw.get("cta") or "Doanh nghiệp của bạn đang gặp điểm nghẽn nào nhất ở chủ đề này?"),
+                "Trạng thái": "planned",
+                "Nguồn": "AI/Gemini",
+            })
         return pd.DataFrame(rows)
+
+
+    def build_ai_calendar(days: int, start: date, industry: str, target: str, selected_platforms: list[str], distribution: str, posts_per_day: int) -> pd.DataFrame:
+        batch_days = max(1, 30 // max(1, posts_per_day))
+        frames = []
+        generated_days = 0
+        while generated_days < days:
+            current_days = min(batch_days, days - generated_days)
+            current_start = start + timedelta(days=generated_days)
+            prompt = _build_ai_calendar_prompt(current_days, current_start, industry, target, selected_platforms, distribution, posts_per_day)
+            items = generate_weekly_plan_json(prompt, api_key=gemini_key)
+            frames.append(_build_calendar_from_ai(items, current_days, current_start, industry, target, selected_platforms, distribution, posts_per_day))
+            generated_days += current_days
+        df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        used_topics = set()
+        for index, topic in enumerate(df.get("Chủ đề", [])):
+            base_topic = str(topic or "").strip() or "Chủ đề AI"
+            unique_topic = base_topic
+            guard = 1
+            while unique_topic.lower() in used_topics:
+                guard += 1
+                unique_topic = f"{base_topic} - góc {guard}"
+            used_topics.add(unique_topic.lower())
+            df.at[index, "Chủ đề"] = unique_topic
+        return df
 
     st.markdown("### Logistics Content & Marketing Planning Engine")
     st.caption("Tạo lịch chủ đề tuần, tháng hoặc 365 ngày cho doanh nghiệp Logistics: SLA, chi phí vận chuyển, fulfillment, kho bãi, case study, ROI và chăm sóc khách hàng trên Facebook, LinkedIn, Zalo.")
@@ -2081,14 +2136,16 @@ def render_tab_content_planning_wizard(gemini_key=None, workspace_id: int = None
             st.metric("Dự kiến bài", days * int(posts_per_day))
         if generate_clicked:
             try:
-                df = build_calendar(days, start_date, industry, target, selected_platforms, distribution, int(posts_per_day))
+                with st.spinner("Gemini đang tạo lịch chủ đề..."):
+                    df = build_ai_calendar(days, start_date, industry, target, selected_platforms, distribution, int(posts_per_day))
                 st.session_state[planner_key] = df
-                st.session_state[f"{planner_key}_last_message"] = f"Đã tạo {len(df)} chủ đề không lặp cho {plan_mode.lower()}."
+                st.session_state[f"{planner_key}_last_message"] = f"Gemini đã tạo {len(df)} chủ đề không lặp cho {plan_mode.lower()}."
                 st.session_state[f"{planner_key}_generated_at"] = datetime.now().strftime("%H:%M:%S %d/%m/%Y")
                 st.success(st.session_state[f"{planner_key}_last_message"])
                 st.info("Lịch đã sẵn sàng ở tab Lịch nội dung. Bạn cũng có thể xem nhanh 10 dòng đầu ngay bên dưới.")
             except Exception as exc:
-                st.error(f"Không tạo được lịch chủ đề: {exc}")
+                st.error(f"Gemini chưa tạo được lịch chủ đề: {exc}")
+                st.info("Vui lòng kiểm tra Gemini API key hoặc thử giảm số ngày nếu phản hồi AI quá dài.")
 
         generated_df = st.session_state.get(planner_key)
         last_message = st.session_state.get(f"{planner_key}_last_message")
@@ -2185,10 +2242,6 @@ def render_tab_content_planning_wizard(gemini_key=None, workspace_id: int = None
             st.write("12 chủ đề lớn x khoảng 25 góc khai thác x 5 định dạng = khoảng 1.500 biến thể nội dung. Cách này giúp duy trì đăng đều mà không lặp ý tưởng trực diện.")
             st.markdown("##### Công thức tạo tương tác cho từng bài")
             st.markdown("- Hook gây tò mò trong 3 dòng đầu\n- Một vấn đề thực tế doanh nghiệp đang gặp\n- Phân tích nguyên nhân\n- Giải pháp bằng AI\n- Một góc nhìn khác biệt\n- Câu hỏi mở để khuyến khích bình luận")
-
-
-
-
 
 
 
