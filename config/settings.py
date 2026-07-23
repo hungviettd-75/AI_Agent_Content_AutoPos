@@ -1,4 +1,4 @@
-﻿import os
+import os
 
 try:
     from dotenv import load_dotenv
@@ -14,15 +14,27 @@ except Exception:
     st = None
 
 
+def _clean_secret_value(value) -> str:
+    """Normalize values copied from dashboards or .env snippets."""
+    text = str(value).strip()
+    if "=" in text and not text.startswith(("postgresql://", "postgres://")):
+        maybe_key, maybe_value = text.split("=", 1)
+        if maybe_key.strip().isupper():
+            text = maybe_value.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        text = text[1:-1].strip()
+    return text
+
+
 def _get_secret(key: str, default: str = "") -> str:
     """Read config from env first, then Streamlit Cloud secrets."""
     value = os.getenv(key)
     if value not in (None, ""):
-        return value
+        return _clean_secret_value(value)
     if st is not None:
         try:
             if key in st.secrets:
-                return str(st.secrets[key])
+                return _clean_secret_value(st.secrets[key])
         except Exception:
             pass
     return default
@@ -42,11 +54,23 @@ PG_NAME     = _get_secret("PG_NAME", "ai_agent_marketing")
 PG_USER     = _get_secret("PG_USER", "postgres")
 PG_PASSWORD = _get_secret("PG_PASSWORD", "")
 
-# DSN san sang dung (uu tien PG_DSN neu da set)
-PG_DSN = _get_secret(
-    "PG_DSN",
-    f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_NAME}"
-)
+# DSN san sang dung. Uu tien DATABASE_URL/PG_DSN tren hosting.
+DATABASE_URL = _get_secret("DATABASE_URL", "")
+PG_DSN = _get_secret("PG_DSN", DATABASE_URL)
+
+if not PG_DSN:
+    pg_parts = [
+        f"host={PG_HOST}",
+        f"port={PG_PORT}",
+        f"dbname={PG_NAME}",
+        f"user={PG_USER}",
+    ]
+    if PG_PASSWORD:
+        pg_parts.append(f"password={PG_PASSWORD}")
+    pg_sslmode = _get_secret("PG_SSLMODE", "require")
+    if pg_sslmode:
+        pg_parts.append(f"sslmode={pg_sslmode}")
+    PG_DSN = " ".join(pg_parts)
 
 # ============================================================
 # API KEYS & TOKENS

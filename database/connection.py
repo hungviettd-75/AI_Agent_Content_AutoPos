@@ -12,12 +12,55 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 from contextlib import contextmanager
+from urllib.parse import parse_qs, unquote, urlsplit
 from config.config import logger
 from config.settings import DB_ENGINE, DB_PATH, PG_DSN
 
 # ============================================================
 # INTERNAL: Connection helpers
 # ============================================================
+
+def _redact_dsn(dsn: str) -> str:
+    text = str(dsn or "")
+    if "@" in text:
+        return "***@" + text.rsplit("@", 1)[-1]
+    if "password=" in text.lower():
+        return "keyword-dsn-with-password"
+    return text or "<empty>"
+
+
+def _pg_kwargs_from_url(dsn: str) -> dict:
+    parsed = urlsplit(dsn.strip())
+    query = parse_qs(parsed.query)
+    kwargs = {
+        "host": parsed.hostname,
+        "dbname": unquote(parsed.path.lstrip("/")) if parsed.path else None,
+        "user": unquote(parsed.username or "") or None,
+        "password": unquote(parsed.password or "") or None,
+        "port": parsed.port,
+    }
+    if query.get("sslmode"):
+        kwargs["sslmode"] = query["sslmode"][0]
+    return {key: value for key, value in kwargs.items() if value not in (None, "")}
+
+
+def _connect_pg(psycopg2, cursor_factory):
+    dsn = str(PG_DSN or "").strip()
+    try:
+        return psycopg2.connect(dsn, cursor_factory=cursor_factory)
+    except psycopg2.ProgrammingError as exc:
+        if dsn.startswith(("postgresql://", "postgres://")):
+            try:
+                kwargs = _pg_kwargs_from_url(dsn)
+                if kwargs.get("host") and kwargs.get("dbname"):
+                    return psycopg2.connect(cursor_factory=cursor_factory, **kwargs)
+            except Exception:
+                pass
+        raise RuntimeError(
+            "Invalid PostgreSQL connection string. In Streamlit secrets, set PG_DSN or DATABASE_URL "
+            "to a valid Postgres URL, or use PG_HOST/PG_PORT/PG_NAME/PG_USER/PG_PASSWORD. "
+            "If the password contains special characters, prefer separate PG_* secrets."
+        ) from exc
 
 def _is_postgres() -> bool:
     return DB_ENGINE == "postgresql"
@@ -36,14 +79,14 @@ def _get_pg_connection():
                 row = self.fetchone()
                 return row[0] if row else None
 
-        conn = psycopg2.connect(PG_DSN, cursor_factory=CompatibleDictCursor)
+        conn = _connect_pg(psycopg2, CompatibleDictCursor)
         conn.autocommit = False
         return conn
     except ImportError:
         logger.error("Thiáº¿u thÆ° viá»‡n psycopg2. HÃ£y cháº¡y: pip install psycopg2-binary")
         raise
     except Exception as e:
-        logger.error(f"KhÃ´ng thá»ƒ káº¿t ná»‘i PostgreSQL táº¡i '{PG_DSN}': {e}", exc_info=True)
+        logger.error(f"Khong the ket noi PostgreSQL tai {_redact_dsn(PG_DSN)}: {e}", exc_info=True)
         raise
 
 
@@ -61,7 +104,7 @@ def get_db_connection():
     Caller cÃ³ trÃ¡ch nhiá»‡m Ä‘Ã³ng connection sau khi dÃ¹ng xong.
     """
     if _is_postgres():
-        logger.debug(f"Äang káº¿t ná»‘i tá»›i PostgreSQL (DSN: {PG_DSN.split('@')[-1]})")
+        logger.debug(f"Dang ket noi toi PostgreSQL ({_redact_dsn(PG_DSN)})")
         return _get_pg_connection()
     else:
         return _get_sqlite_connection()
