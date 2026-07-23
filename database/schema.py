@@ -228,6 +228,16 @@ SQLITE_DDL = [
     )""",
 
     # ----------------------------------------------------------
+    # 10b. weekly_schedules (legacy weekly planner)
+    # ----------------------------------------------------------
+    """CREATE TABLE IF NOT EXISTS weekly_schedules (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        week_start   TEXT,
+        plan_json    TEXT,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+        created_at   TEXT DEFAULT (datetime('now'))
+    )""",
+    # ----------------------------------------------------------
     # 11. approvals
     # ----------------------------------------------------------
     """CREATE TABLE IF NOT EXISTS approvals (
@@ -326,6 +336,7 @@ SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_knowledge_workspace ON knowledge(workspace_id)",
     "CREATE INDEX IF NOT EXISTS idx_schedules_status    ON schedules(status)",
     "CREATE INDEX IF NOT EXISTS idx_schedules_scheduled ON schedules(scheduled_at)",
+    "CREATE INDEX IF NOT EXISTS idx_weekly_schedules_workspace ON weekly_schedules(workspace_id)",
     "CREATE INDEX IF NOT EXISTS idx_analytics_post      ON analytics(post_id)",
     "CREATE INDEX IF NOT EXISTS idx_analytics_date      ON analytics(metric_date)",
     "CREATE INDEX IF NOT EXISTS idx_campaigns_workspace ON campaigns(workspace_id)",
@@ -530,6 +541,14 @@ POSTGRESQL_DDL = [
         updated_at    TIMESTAMPTZ DEFAULT NOW()
     )""",
 
+    # 10b. weekly_schedules (legacy weekly planner)
+    """CREATE TABLE IF NOT EXISTS weekly_schedules (
+        id           SERIAL PRIMARY KEY,
+        week_start   TEXT,
+        plan_json    TEXT,
+        workspace_id INT REFERENCES workspaces(id) ON DELETE SET NULL,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+    )""",
     # 11. approvals
     """CREATE TABLE IF NOT EXISTS approvals (
         id            SERIAL PRIMARY KEY,
@@ -592,6 +611,7 @@ POSTGRESQL_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_knowledge_workspace ON knowledge(workspace_id)",
     "CREATE INDEX IF NOT EXISTS idx_schedules_status    ON schedules(status)",
     "CREATE INDEX IF NOT EXISTS idx_schedules_scheduled ON schedules(scheduled_at)",
+    "CREATE INDEX IF NOT EXISTS idx_weekly_schedules_workspace ON weekly_schedules(workspace_id)",
     "CREATE INDEX IF NOT EXISTS idx_analytics_post      ON analytics(post_id)",
     "CREATE INDEX IF NOT EXISTS idx_analytics_date      ON analytics(metric_date)",
     "CREATE INDEX IF NOT EXISTS idx_campaigns_workspace ON campaigns(workspace_id)",
@@ -605,7 +625,7 @@ TABLE_ORDER = [
     "users", "workspaces", "workspace_members",
     "companies", "brand", "projects", "campaigns",
     "posts", "assets", "knowledge",
-    "schedules", "approvals", "prompt_versions", "analytics",
+    "schedules", "weekly_schedules", "approvals", "prompt_versions", "analytics",
     "learning_insights",
 ]
 
