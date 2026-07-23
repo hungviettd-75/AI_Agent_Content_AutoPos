@@ -623,27 +623,55 @@ def create_all_tables(conn, engine: str = "sqlite"):
     idx_list  = POSTGRESQL_INDEXES if engine == "postgresql" else SQLITE_INDEXES
 
     cur = conn.cursor()
-    logger.info(f"[SCHEMA] Bat dau tao {len(ddl_list)} bang ({engine.upper()})...")
+    lock_key = 2026072301
+    use_pg_lock = engine == "postgresql"
 
-    for stmt in ddl_list:
-        # Lay ten bang tu dong dau DDL
-        table_name = stmt.strip().split("EXISTS")[-1].strip().split("(")[0].strip()
-        try:
-            cur.execute(stmt)
-            logger.debug(f"[SCHEMA] OK: {table_name}")
-        except Exception as e:
-            logger.error(f"[SCHEMA] LOI tao bang {table_name}: {e}")
-            raise
+    try:
+        if use_pg_lock:
+            logger.info("[SCHEMA] Dang khoa advisory lock PostgreSQL de tranh tao schema song song...")
+            cur.execute("SELECT pg_advisory_lock(%s)", (lock_key,))
 
-    logger.info(f"[SCHEMA] Tao {len(idx_list)} index...")
-    for stmt in idx_list:
-        try:
-            cur.execute(stmt)
-        except Exception as e:
-            logger.warning(f"[SCHEMA] Khong the tao index: {e}")
+        logger.info(f"[SCHEMA] Bat dau tao {len(ddl_list)} bang ({engine.upper()})...")
 
-    conn.commit()
-    logger.info("[SCHEMA] Hoan tat tao toan bo bang va index.")
+        for stmt in ddl_list:
+            # Lay ten bang tu dong dau DDL
+            table_name = stmt.strip().split("EXISTS")[-1].strip().split("(")[0].strip()
+            try:
+                cur.execute(stmt)
+                logger.debug(f"[SCHEMA] OK: {table_name}")
+            except Exception as e:
+                logger.error(f"[SCHEMA] LOI tao bang {table_name}: {e}")
+                raise
+
+        conn.commit()
+
+        logger.info(f"[SCHEMA] Tao {len(idx_list)} index...")
+        for stmt in idx_list:
+            try:
+                if engine == "postgresql":
+                    cur.execute("SAVEPOINT schema_index")
+                cur.execute(stmt)
+                if engine == "postgresql":
+                    cur.execute("RELEASE SAVEPOINT schema_index")
+            except Exception as e:
+                logger.warning(f"[SCHEMA] Khong the tao index: {e}")
+                if engine == "postgresql":
+                    cur.execute("ROLLBACK TO SAVEPOINT schema_index")
+                    cur.execute("RELEASE SAVEPOINT schema_index")
+
+        conn.commit()
+        logger.info("[SCHEMA] Hoan tat tao toan bo bang va index.")
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        if use_pg_lock:
+            try:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"[SCHEMA] Khong the mo advisory lock PostgreSQL: {e}")
+                conn.rollback()
 
 
 def verify_tables(conn, engine: str = "sqlite") -> dict:

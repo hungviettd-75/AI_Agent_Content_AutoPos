@@ -135,10 +135,10 @@ def ensure_columns(cursor, table_name: str, columns: dict):
 def _load_create_all_tables():
     """Load schema creator reliably on Streamlit Cloud and local runs."""
     try:
-        from database.schema import create_all_tables
+        from .schema import create_all_tables
         return create_all_tables
     except ModuleNotFoundError as exc:
-        logger.warning(f"Package import database.schema failed, trying file import: {exc}")
+        logger.warning(f"Relative import database.schema failed, trying file import: {exc}")
 
         import importlib.util
         from pathlib import Path
@@ -413,8 +413,4 @@ def delete_knowledge_post(post_id) -> bool:
         else:
             logger.warning(f"KhÃ´ng tÃ¬m tháº¥y bÃ i viáº¿t Ä‘á»ƒ xÃ³a vá»›i ID={post_id}")
         return deleted
-
-
-
-
 
