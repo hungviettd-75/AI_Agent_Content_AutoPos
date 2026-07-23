@@ -226,24 +226,37 @@ def init_db():
             "target_customers": "TEXT"
         })
 
-        # --- TÆ°Æ¡ng thÃ­ch ngÆ°á»£c: thÃªm cá»™t workspace_id vÃ o weekly_schedules náº¿u thiáº¿u ---
+        # --- Tuong thich nguoc: tao/bo sung weekly_schedules neu thieu ---
         if _is_postgres():
-            cur.execute(
-                """SELECT column_name FROM information_schema.columns
-                   WHERE table_name = 'weekly_schedules' AND column_name = 'workspace_id'"""
-            )
-            if not cur.fetchone():
-                logger.info("PostgreSQL: ThÃªm cá»™t 'workspace_id' vÃ o báº£ng 'weekly_schedules'")
-                cur.execute("ALTER TABLE weekly_schedules ADD COLUMN workspace_id INT")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS weekly_schedules (
+                    id           SERIAL PRIMARY KEY,
+                    week_start   TEXT,
+                    plan_json    TEXT,
+                    workspace_id INT REFERENCES workspaces(id) ON DELETE SET NULL,
+                    created_at   TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            cur.execute("ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS workspace_id INT")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_weekly_schedules_workspace ON weekly_schedules(workspace_id)")
         else:
             try:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS weekly_schedules (
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        week_start   TEXT,
+                        plan_json    TEXT,
+                        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+                        created_at   TEXT DEFAULT (datetime('now'))
+                    )
+                """)
                 cur.execute("PRAGMA table_info(weekly_schedules)")
                 cols = {row[1] for row in cur.fetchall()}
                 if cols and "workspace_id" not in cols:
-                    logger.info("SQLite: ThÃªm cá»™t 'workspace_id' vÃ o báº£ng 'weekly_schedules'")
+                    logger.info("SQLite: Them cot 'workspace_id' vao bang 'weekly_schedules'")
                     cur.execute("ALTER TABLE weekly_schedules ADD COLUMN workspace_id INTEGER")
             except Exception as e:
-                logger.warning(f"KhÃ´ng thá»ƒ kiá»ƒm tra/thÃªm cá»™t vÃ o weekly_schedules: {e}")
+                logger.warning(f"Khong the tao/kiem tra/bo sung weekly_schedules: {e}")
 
         # --- Learning Loop: Tu tao bang learning_insights neu chua co ---
         if _is_postgres():
