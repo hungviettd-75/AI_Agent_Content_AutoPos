@@ -1148,9 +1148,35 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
     st.markdown("### AI Sales & Marketing Growth Platform for Logistics")
     st.caption("Quản lý lead, chấm điểm cơ hội, tạo campaign funnel và kịch bản follow-up cho dịch vụ vận chuyển, fulfillment, kho bãi và tối ưu logistics.")
 
-    tabs = st.tabs(["Lead Pipeline", "Lead Scoring", "Campaign Funnel", "Sales Scripts", "Freight Quote", "Shipping Calculator", "International Tracking", "HS Code", "Customs Assistant", "Export Consultant", "Quote Generator", "AI Sales Agent", "AI Knowledge Base", "AI Route Planner", "AI Margin Simulator", "AI Shipping Dashboard"])
+    tab_labels = [
+        "Lead Pipeline",
+        "Lead Scoring",
+        "Campaign Funnel",
+        "Sales Scripts",
+        "Freight Quote",
+        "Shipping Calculator",
+        "International Tracking",
+        "HS Code",
+        "Customs Assistant",
+        "Export Consultant",
+        "Quote Generator",
+        "AI Sales Agent",
+        "AI Knowledge Base",
+        "AI Route Planner",
+        "AI Margin Simulator",
+        "AI Shipping Dashboard",
+    ]
+    selected_tab = st.pills(
+        "Logistics Growth menu",
+        tab_labels,
+        default=tab_labels[0],
+        key=_growth_key(workspace_id, "active_tab"),
+        label_visibility="collapsed",
+        width="stretch",
+    ) or tab_labels[0]
 
-    with tabs[0]:
+
+    if selected_tab == tab_labels[0]: 
         st.markdown("##### Logistics Lead Pipeline")
         upload = st.file_uploader("Import lead CSV", type=["csv"], key=f"{leads_key}_upload", disabled=not can_edit)
         if upload is not None and can_edit:
@@ -1184,7 +1210,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
         csv = edited.to_csv(index=False).encode("utf-8-sig")
         st.download_button("Export lead pipeline CSV", csv, "logistics_lead_pipeline.csv", "text/csv", use_container_width=True, key=f"{leads_key}_download")
 
-    with tabs[1]:
+    elif selected_tab == tab_labels[1]: 
         st.markdown("##### Lead Scoring & Next Best Action")
         df = st.session_state[leads_key].copy()
         if df.empty:
@@ -1195,7 +1221,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             df["next_best_action"] = df.apply(_next_action, axis=1)
             st.dataframe(df[["company", "segment", "contact_role", "stage", "pain_point", "monthly_shipments", "score", "priority", "next_best_action"]].sort_values("score", ascending=False), use_container_width=True, hide_index=True)
 
-    with tabs[2]:
+    elif selected_tab == tab_labels[2]: 
         st.markdown("##### Campaign Funnel Builder")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -1232,7 +1258,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
                     created += 1
                 st.success(f"Đã lưu {created} campaign drafts.")
 
-    with tabs[3]:
+    elif selected_tab == tab_labels[3]: 
         st.markdown("##### Sales Scripts Generator")
         df = st.session_state[leads_key].copy()
         if df.empty:
@@ -1257,7 +1283,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
                 )
                 st.success("Đã lưu sales script vào draft posts.")
 
-    with tabs[4]:
+    elif selected_tab == tab_labels[4]: 
         st.markdown("##### Freight Quote Assistant")
         st.caption("Nhập thông tin shipment một lần để AI so sánh nhiều hãng vận chuyển, gợi ý tuyến tối ưu, dự đoán transit time, ước tính thuế/phụ phí và chọn phương án tiết kiệm nhất.")
 
@@ -1326,7 +1352,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             use_container_width=True,
             key=f"{campaign_key}_freight_download",
         )
-    with tabs[5]:
+    elif selected_tab == tab_labels[5]: 
         st.markdown("##### Shipping Landed Cost Calculator")
         st.caption("Tính toàn bộ chi phí từ Freight, Fuel surcharge, Customs, VAT, Insurance, Handling, Documentation, Last Mile đến Total Landed Cost và giá bán tối thiểu.")
 
@@ -1424,7 +1450,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             use_container_width=True,
             key=f"{campaign_key}_ship_landed_download",
         )
-    with tabs[6]:
+    elif selected_tab == tab_labels[6]: 
         st.markdown("##### International Tracking")
         st.caption("Nhập Tracking Number để AI theo dõi trạng thái, tóm tắt tiến trình, phát hiện chậm và cảnh báo rủi ro vận chuyển quốc tế.")
         t1, t2, t3 = st.columns([2, 1, 1])
@@ -1466,7 +1492,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             st.text_area("CSKH follow-up message", value=followup, height=140, key=f"{campaign_key}_tracking_message")
         else:
             st.info("Nhập tracking number để AI phân tích tiến trình và cảnh báo rủi ro.")
-    with tabs[7]:
+    elif selected_tab == tab_labels[7]: 
         st.markdown("##### HS Code Lookup")
         st.caption("Enter a product name and get a structured compliance path: HS Code -> Duty -> VAT -> FTA -> Required Documents -> Restrictions.")
         countries = list(COUNTRY_ZONES.keys())
@@ -1486,7 +1512,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             key=f"{campaign_key}_hs_download",
         )
 
-    with tabs[8]:
+    elif selected_tab == tab_labels[8]: 
         st.markdown("##### Customs Assistant")
         st.caption("Check whether the customs file has enough core documents for declaration support.")
         ca_cols = st.columns([1, 2, 1])
@@ -1510,7 +1536,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             key=f"{campaign_key}_customs_note",
         )
 
-    with tabs[9]:
+    elif selected_tab == tab_labels[9]: 
         st.markdown("##### Export Consultant")
         st.caption("Ask an export question and get a practical answer covering permission, documents, tax, quarantine, timing, ports, carriers and estimated freight.")
         ec_cols = st.columns([2, 1, 1, 1])
@@ -1532,7 +1558,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             key=f"{campaign_key}_export_response",
         )
 
-    with tabs[10]:
+    elif selected_tab == tab_labels[10]: 
         st.markdown("##### Quote Generator")
         st.caption("Generate a customer-ready PDF quote with Freight, Insurance, ETA, Terms and payment terms.")
         countries = list(COUNTRY_ZONES.keys())
@@ -1585,7 +1611,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
                 key=f"{campaign_key}_quote_pdf_download",
             )
 
-    with tabs[11]:
+    elif selected_tab == tab_labels[11]: 
         st.markdown("##### AI Sales Agent")
         st.caption("Customer leaves a request, AI chats, collects shipment info, creates quote, drafts email, follows up, and hands off to CRM.")
         countries = list(COUNTRY_ZONES.keys())
@@ -1610,7 +1636,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
         with e2:
             st.text_area("CRM handoff", value=crm_note, height=220, key=f"{campaign_key}_sales_crm")
 
-    with tabs[12]:
+    elif selected_tab == tab_labels[12]: 
         st.markdown("##### AI Freight Knowledge Base")
         st.caption("Freight Context Hub: one shipment context powers RAG, Quote, Customs, Export Consultant, Shipping Cost, HS Code, Tracking, and Sales Agent.")
         countries = list(COUNTRY_ZONES.keys())
@@ -1677,25 +1703,33 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
         st.markdown("##### Connected Modules")
         st.dataframe(hub["summary"], use_container_width=True, hide_index=True)
 
-        hub_tabs = st.tabs(["RAG", "Quote", "Shipping Cost", "HS Code", "Customs", "Export", "Tracking", "Sales"])
-        with hub_tabs[0]:
+        hub_tab_labels = ["RAG", "Quote", "Shipping Cost", "HS Code", "Customs", "Export", "Tracking", "Sales"]
+        selected_hub_tab = st.pills(
+            "Knowledge Base section",
+            hub_tab_labels,
+            default=hub_tab_labels[0],
+            key=f"{campaign_key}_hub_active_section",
+            label_visibility="collapsed",
+            width="stretch",
+        ) or hub_tab_labels[0]
+        if selected_hub_tab == hub_tab_labels[0]: 
             st.dataframe(hub["kb_sources"], use_container_width=True, hide_index=True)
             st.dataframe(hub["route_options"], use_container_width=True, hide_index=True)
-        with hub_tabs[1]:
+        elif selected_hub_tab == hub_tab_labels[1]: 
             st.dataframe(hub["quote"], use_container_width=True, hide_index=True)
-        with hub_tabs[2]:
+        elif selected_hub_tab == hub_tab_labels[2]: 
             st.dataframe(hub["shipping"], use_container_width=True, hide_index=True)
-        with hub_tabs[3]:
+        elif selected_hub_tab == hub_tab_labels[3]: 
             st.dataframe(hub["hs_table"], use_container_width=True, hide_index=True)
-        with hub_tabs[4]:
+        elif selected_hub_tab == hub_tab_labels[4]: 
             st.dataframe(hub["customs_audit"], use_container_width=True, hide_index=True)
-        with hub_tabs[5]:
+        elif selected_hub_tab == hub_tab_labels[5]: 
             st.dataframe(hub["export_advice"], use_container_width=True, hide_index=True)
-        with hub_tabs[6]:
+        elif selected_hub_tab == hub_tab_labels[6]: 
             st.dataframe(hub["tracking"], use_container_width=True, hide_index=True)
             if not hub["timeline"].empty:
                 st.dataframe(hub["timeline"], use_container_width=True, hide_index=True)
-        with hub_tabs[7]:
+        elif selected_hub_tab == hub_tab_labels[7]: 
             st.dataframe(hub["sales_workflow"], use_container_width=True, hide_index=True)
             s1, s2 = st.columns(2)
             with s1:
@@ -1703,7 +1737,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
             with s2:
                 st.text_area("CRM note from hub", value=str(hub["crm_note"]), height=200, key=f"{campaign_key}_hub_crm")
 
-    with tabs[13]:
+    elif selected_tab == tab_labels[13]: 
         st.markdown("##### AI Route Planner")
         st.caption("Optimize Vietnam -> Singapore -> Germany -> Netherlands -> Last Mile and compare transit time, cost, and CO2.")
         rp_cols = st.columns(3)
@@ -1722,7 +1756,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
         st.dataframe(route_options, use_container_width=True, hide_index=True)
         st.info(f"AI recommends {best_route['Option']} because it matches priority '{route_priority}' with score {best_route['AI score']}.")
 
-    with tabs[14]:
+    elif selected_tab == tab_labels[14]: 
         st.markdown("##### AI Margin Simulator")
         st.caption("Simulate margin when shipping, duty, VAT, commission, or carrier cost changes.")
         margin_cols = st.columns(6)
@@ -1745,7 +1779,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
         st.dataframe(margin_table, use_container_width=True, hide_index=True)
         st.success(margin_recommendation)
 
-    with tabs[15]:
+    elif selected_tab == tab_labels[15]: 
         st.markdown("##### AI Shipping Dashboard")
         st.caption("Tong hop hieu suat van chuyen: shipment volume, monthly cost, ETA, on-time rate, cost by country, carrier, customer, and delayed shipment alerts.")
 
