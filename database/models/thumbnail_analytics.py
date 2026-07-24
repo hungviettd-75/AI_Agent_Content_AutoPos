@@ -17,15 +17,16 @@ class ThumbnailAnalyticsModel:
 
     @staticmethod
     def ensure_tables():
-        """Tự tạo bảng nếu chưa tồn tại (SQLite & PostgreSQL)."""
+        """Tao bang thumbnail analytics dung cu phap cho SQLite va PostgreSQL."""
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            
-            # 1. thumbnail_analytics
-            cur.execute("""
+            id_type = "SERIAL PRIMARY KEY" if _is_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
+            ts_default = "TIMESTAMPTZ DEFAULT NOW()" if _is_postgres() else "TEXT DEFAULT (datetime('now'))"
+            real_type = "NUMERIC(12,4)" if _is_postgres() else "REAL"
+            cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS thumbnail_analytics (
-                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id                  {id_type},
                     workspace_id        INTEGER NOT NULL,
                     asset_id            INTEGER NOT NULL,
                     post_id             INTEGER,
@@ -48,71 +49,68 @@ class ThumbnailAnalyticsModel:
                     likes               INTEGER DEFAULT 0,
                     video_plays         INTEGER DEFAULT 0,
                     link_clicks         INTEGER DEFAULT 0,
-                    ctr                 REAL DEFAULT 0.0,
-                    engagement_rate     REAL DEFAULT 0.0,
-                    save_rate           REAL DEFAULT 0.0,
-                    share_rate          REAL DEFAULT 0.0,
-                    virality_score      REAL DEFAULT 0.0,
-                    thumbnail_score     REAL DEFAULT 0.0,
+                    ctr                 {real_type} DEFAULT 0.0,
+                    engagement_rate     {real_type} DEFAULT 0.0,
+                    save_rate           {real_type} DEFAULT 0.0,
+                    share_rate          {real_type} DEFAULT 0.0,
+                    virality_score      {real_type} DEFAULT 0.0,
+                    thumbnail_score     {real_type} DEFAULT 0.0,
                     score_breakdown     TEXT,
                     period_start        TEXT NOT NULL,
                     period_end          TEXT NOT NULL,
                     granularity         TEXT DEFAULT 'daily',
-                    collected_at        TEXT DEFAULT (datetime('now')),
+                    collected_at        {ts_default},
                     source              TEXT DEFAULT 'manual'
                 )
             """)
-            
-            # 2. thumbnail_heatmap
-            cur.execute("""
+            cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS thumbnail_heatmap (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workspace_id    INTEGER NOT NULL,
-                    asset_id        INTEGER NOT NULL,
-                    x_norm          REAL NOT NULL,
-                    y_norm          REAL NOT NULL,
-                    zone_label      TEXT,
-                    attention_score REAL DEFAULT 0.0,
+                    id               {id_type},
+                    workspace_id     INTEGER NOT NULL,
+                    asset_id         INTEGER NOT NULL,
+                    x_norm           {real_type} NOT NULL,
+                    y_norm           {real_type} NOT NULL,
+                    zone_label       TEXT,
+                    attention_score  {real_type} DEFAULT 0.0,
                     interaction_type TEXT DEFAULT 'view',
-                    device_type     TEXT DEFAULT 'mobile',
-                    session_count   INTEGER DEFAULT 1,
-                    recorded_at     TEXT DEFAULT (datetime('now'))
+                    device_type      TEXT DEFAULT 'mobile',
+                    session_count    INTEGER DEFAULT 1,
+                    recorded_at      {ts_default}
                 )
             """)
-            
-            # 3. thumbnail_template_stats
-            cur.execute("""
+            cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS thumbnail_template_stats (
-                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id                  {id_type},
                     workspace_id        INTEGER NOT NULL,
                     template_id         TEXT NOT NULL,
                     template_name       TEXT,
                     template_category   TEXT,
                     platform            TEXT,
                     usage_count         INTEGER DEFAULT 0,
-                    avg_ctr             REAL DEFAULT 0.0,
-                    avg_engagement      REAL DEFAULT 0.0,
+                    avg_ctr             {real_type} DEFAULT 0.0,
+                    avg_engagement      {real_type} DEFAULT 0.0,
                     avg_reach           INTEGER DEFAULT 0,
-                    avg_saves           REAL DEFAULT 0.0,
-                    avg_shares          REAL DEFAULT 0.0,
+                    avg_saves           {real_type} DEFAULT 0.0,
+                    avg_shares          {real_type} DEFAULT 0.0,
                     total_impressions   INTEGER DEFAULT 0,
-                    win_rate            REAL DEFAULT 0.0,
-                    rank_score          REAL DEFAULT 0.0,
+                    win_rate            {real_type} DEFAULT 0.0,
+                    rank_score          {real_type} DEFAULT 0.0,
                     rank_position       INTEGER DEFAULT 0,
                     last_used_at        TEXT,
-                    updated_at          TEXT DEFAULT (datetime('now')),
+                    updated_at          {ts_default},
                     UNIQUE (workspace_id, template_id, platform)
                 )
             """)
-            
-            # Tạo index
             cur.execute("CREATE INDEX IF NOT EXISTS idx_thumb_analytics_workspace ON thumbnail_analytics(workspace_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_thumb_analytics_asset ON thumbnail_analytics(asset_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_heatmap_asset ON thumbnail_heatmap(asset_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tmpl_stats_workspace ON thumbnail_template_stats(workspace_id)")
-            
             conn.commit()
-            logger.info("[ThumbnailAnalytics] Khởi tạo / xác minh các bảng phân tích thumbnail thành công.")
+            logger.info("[ThumbnailAnalytics] ensured thumbnail analytics tables.")
+        except Exception:
+            conn.rollback()
+            logger.exception("[ThumbnailAnalytics] Could not ensure thumbnail analytics tables")
+            raise
         finally:
             conn.close()
 
@@ -141,6 +139,8 @@ class ThumbnailAnalyticsModel:
         save_pts = min(save_rate / 3.0, 1.0) * 15
         share_pts = min(share_rate / 2.0, 1.0) * 10
         score = ctr_pts + eng_pts + reach_pts + save_pts + share_pts
+
+        ThumbnailAnalyticsModel.ensure_tables()
 
         score_breakdown = json.dumps({
             'ctr_pts': round(ctr_pts, 2),
@@ -177,6 +177,7 @@ class ThumbnailAnalyticsModel:
 
     @staticmethod
     def get_by_asset(asset_id: int, workspace_id: int, days: int = 30) -> list:
+        ThumbnailAnalyticsModel.ensure_tables()
         since = (datetime.now() - timedelta(days=days)).isoformat()
         sql = _adapt_sql("""
             SELECT * FROM thumbnail_analytics
@@ -194,6 +195,7 @@ class ThumbnailAnalyticsModel:
 
     @staticmethod
     def get_workspace_summary(workspace_id: int, days: int = 30) -> dict:
+        ThumbnailAnalyticsModel.ensure_tables()
         since = (datetime.now() - timedelta(days=days)).isoformat()
         sql = _adapt_sql("""
             SELECT
@@ -228,6 +230,7 @@ class ThumbnailAnalyticsModel:
 
     @staticmethod
     def get_platform_breakdown(workspace_id: int, days: int = 30) -> list:
+        ThumbnailAnalyticsModel.ensure_tables()
         since = (datetime.now() - timedelta(days=days)).isoformat()
         sql = _adapt_sql("""
             SELECT
@@ -254,6 +257,7 @@ class ThumbnailAnalyticsModel:
 
     @staticmethod
     def get_top_thumbnails(workspace_id: int, limit: int = 10, platform: str = None, days: int = 30) -> list:
+        ThumbnailAnalyticsModel.ensure_tables()
         since = (datetime.now() - timedelta(days=days)).isoformat()
         q = """
             SELECT ta.*, a.name, a.url
@@ -280,6 +284,7 @@ class ThumbnailAnalyticsModel:
     # --- Heatmap Helpers ---
     @staticmethod
     def record_heatmap_click(workspace_id: int, asset_id: int, x_norm: float, y_norm: float, zone_label: str, attention_score: float = 0.5):
+        ThumbnailAnalyticsModel.ensure_tables()
         sql = _adapt_sql("""
             INSERT INTO thumbnail_heatmap (workspace_id, asset_id, x_norm, y_norm, zone_label, attention_score, recorded_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -292,6 +297,7 @@ class ThumbnailAnalyticsModel:
 
     @staticmethod
     def get_heatmap_by_asset(asset_id: int, workspace_id: int) -> list:
+        ThumbnailAnalyticsModel.ensure_tables()
         sql = _adapt_sql("SELECT * FROM thumbnail_heatmap WHERE asset_id=? AND workspace_id=?")
         conn = get_db_connection()
         try:
@@ -305,6 +311,7 @@ class ThumbnailAnalyticsModel:
     # --- Template stats ---
     @staticmethod
     def increment_template_usage(workspace_id: int, template_id: str, platform: str, template_name: str, template_category: str):
+        ThumbnailAnalyticsModel.ensure_tables()
         sql_check = _adapt_sql("SELECT id, usage_count FROM thumbnail_template_stats WHERE workspace_id=? AND template_id=? AND platform=?")
         conn = get_db_connection()
         row = None
@@ -334,6 +341,7 @@ class ThumbnailAnalyticsModel:
 
     @staticmethod
     def list_templates(workspace_id: int) -> list:
+        ThumbnailAnalyticsModel.ensure_tables()
         sql = _adapt_sql("SELECT * FROM thumbnail_template_stats WHERE workspace_id=? ORDER BY rank_score DESC")
         conn = get_db_connection()
         try:

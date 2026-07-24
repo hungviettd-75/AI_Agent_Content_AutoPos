@@ -456,6 +456,168 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_provider ON ai_logs(provider)")
         logger.info("[SCHEMA] Da xac minh bang ai_logs (AI Cost Center).")
 
+        if _is_postgres():
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ab_tests (
+                    id           SERIAL PRIMARY KEY,
+                    workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+                    name         TEXT NOT NULL,
+                    test_type    TEXT NOT NULL DEFAULT 'prompt',
+                    topic        TEXT,
+                    platform     TEXT,
+                    description  TEXT,
+                    status       TEXT NOT NULL DEFAULT 'draft',
+                    winner_id    INTEGER,
+                    created_by   INTEGER,
+                    created_at   TIMESTAMPTZ DEFAULT NOW(),
+                    started_at   TIMESTAMPTZ,
+                    completed_at TIMESTAMPTZ
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ab_variants (
+                    id           SERIAL PRIMARY KEY,
+                    test_id      INTEGER NOT NULL REFERENCES ab_tests(id) ON DELETE CASCADE,
+                    label        TEXT NOT NULL,
+                    variant_type TEXT NOT NULL DEFAULT 'A',
+                    content      TEXT NOT NULL,
+                    prompt_used  TEXT,
+                    impressions  INTEGER DEFAULT 0,
+                    clicks       INTEGER DEFAULT 0,
+                    conversions  INTEGER DEFAULT 0,
+                    leads        INTEGER DEFAULT 0,
+                    revenue      INTEGER DEFAULT 0,
+                    score        NUMERIC(12,4) DEFAULT 0,
+                    notes        TEXT,
+                    created_at   TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+        else:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ab_tests (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id INTEGER,
+                    name         TEXT NOT NULL,
+                    test_type    TEXT NOT NULL DEFAULT 'prompt',
+                    topic        TEXT,
+                    platform     TEXT,
+                    description  TEXT,
+                    status       TEXT NOT NULL DEFAULT 'draft',
+                    winner_id    INTEGER,
+                    created_by   INTEGER,
+                    created_at   TEXT DEFAULT (datetime('now')),
+                    started_at   TEXT,
+                    completed_at TEXT
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ab_variants (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    test_id      INTEGER NOT NULL,
+                    label        TEXT NOT NULL,
+                    variant_type TEXT NOT NULL DEFAULT 'A',
+                    content      TEXT NOT NULL,
+                    prompt_used  TEXT,
+                    impressions  INTEGER DEFAULT 0,
+                    clicks       INTEGER DEFAULT 0,
+                    conversions  INTEGER DEFAULT 0,
+                    leads        INTEGER DEFAULT 0,
+                    revenue      INTEGER DEFAULT 0,
+                    score        REAL DEFAULT 0,
+                    notes        TEXT,
+                    created_at   TEXT DEFAULT (datetime('now'))
+                )
+            """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ab_variants_test ON ab_variants(test_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ab_tests_workspace ON ab_tests(workspace_id)")
+        logger.info("[SCHEMA] Da xac minh bang A/B Testing.")
+
+        id_type = "SERIAL PRIMARY KEY" if _is_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        ts_default = "TIMESTAMPTZ DEFAULT NOW()" if _is_postgres() else "TEXT DEFAULT (datetime('now'))"
+        real_type = "NUMERIC(12,4)" if _is_postgres() else "REAL"
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS thumbnail_analytics (
+                id                  {id_type},
+                workspace_id        INTEGER NOT NULL,
+                asset_id            INTEGER NOT NULL,
+                post_id             INTEGER,
+                campaign_id         INTEGER,
+                ab_test_id          INTEGER,
+                ab_variant_id       INTEGER,
+                platform            TEXT NOT NULL,
+                template_id         TEXT,
+                brand_status        TEXT DEFAULT 'unknown',
+                aspect_ratio        TEXT,
+                style_tag           TEXT,
+                thumbnail_url       TEXT,
+                impressions         INTEGER DEFAULT 0,
+                reach               INTEGER DEFAULT 0,
+                clicks              INTEGER DEFAULT 0,
+                thumbnail_clicks    INTEGER DEFAULT 0,
+                saves               INTEGER DEFAULT 0,
+                shares              INTEGER DEFAULT 0,
+                comments            INTEGER DEFAULT 0,
+                likes               INTEGER DEFAULT 0,
+                video_plays         INTEGER DEFAULT 0,
+                link_clicks         INTEGER DEFAULT 0,
+                ctr                 {real_type} DEFAULT 0.0,
+                engagement_rate     {real_type} DEFAULT 0.0,
+                save_rate           {real_type} DEFAULT 0.0,
+                share_rate          {real_type} DEFAULT 0.0,
+                virality_score      {real_type} DEFAULT 0.0,
+                thumbnail_score     {real_type} DEFAULT 0.0,
+                score_breakdown     TEXT,
+                period_start        TEXT NOT NULL,
+                period_end          TEXT NOT NULL,
+                granularity         TEXT DEFAULT 'daily',
+                collected_at        {ts_default},
+                source              TEXT DEFAULT 'manual'
+            )
+        """)
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS thumbnail_heatmap (
+                id               {id_type},
+                workspace_id     INTEGER NOT NULL,
+                asset_id         INTEGER NOT NULL,
+                x_norm           {real_type} NOT NULL,
+                y_norm           {real_type} NOT NULL,
+                zone_label       TEXT,
+                attention_score  {real_type} DEFAULT 0.0,
+                interaction_type TEXT DEFAULT 'view',
+                device_type      TEXT DEFAULT 'mobile',
+                session_count    INTEGER DEFAULT 1,
+                recorded_at      {ts_default}
+            )
+        """)
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS thumbnail_template_stats (
+                id                  {id_type},
+                workspace_id        INTEGER NOT NULL,
+                template_id         TEXT NOT NULL,
+                template_name       TEXT,
+                template_category   TEXT,
+                platform            TEXT,
+                usage_count         INTEGER DEFAULT 0,
+                avg_ctr             {real_type} DEFAULT 0.0,
+                avg_engagement      {real_type} DEFAULT 0.0,
+                avg_reach           INTEGER DEFAULT 0,
+                avg_saves           {real_type} DEFAULT 0.0,
+                avg_shares          {real_type} DEFAULT 0.0,
+                total_impressions   INTEGER DEFAULT 0,
+                win_rate            {real_type} DEFAULT 0.0,
+                rank_score          {real_type} DEFAULT 0.0,
+                rank_position       INTEGER DEFAULT 0,
+                last_used_at        TEXT,
+                updated_at          {ts_default},
+                UNIQUE (workspace_id, template_id, platform)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_thumb_analytics_workspace ON thumbnail_analytics(workspace_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_thumb_analytics_asset ON thumbnail_analytics(asset_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_heatmap_asset ON thumbnail_heatmap(asset_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tmpl_stats_workspace ON thumbnail_template_stats(workspace_id)")
+        logger.info("[SCHEMA] Da xac minh bang Thumbnail Analytics.")
+
         conn.commit()
     finally:
         conn.close()
