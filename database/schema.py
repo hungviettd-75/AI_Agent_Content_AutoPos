@@ -321,6 +321,22 @@ SQLITE_DDL = [
         applied_at       TEXT,
         expires_at       TEXT
     )""",
+
+    # ----------------------------------------------------------
+    # 15. invoices (Billing & Quota)
+    # ----------------------------------------------------------
+    """CREATE TABLE IF NOT EXISTS invoices (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id   INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        invoice_no     TEXT UNIQUE NOT NULL,
+        plan           TEXT NOT NULL,
+        amount         REAL NOT NULL,
+        status         TEXT NOT NULL DEFAULT 'paid',
+        billing_date   TEXT NOT NULL,
+        payment_method TEXT DEFAULT 'Credit Card',
+        pdf_url        TEXT
+    )""",
+
 ]
 
 
@@ -345,6 +361,7 @@ SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_prompt_name_active  ON prompt_versions(prompt_name, is_active)",
     "CREATE INDEX IF NOT EXISTS idx_learning_workspace  ON learning_insights(workspace_id)",
     "CREATE INDEX IF NOT EXISTS idx_learning_type       ON learning_insights(insight_type, status)",
+    "CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id)",
 ]
 
 
@@ -600,6 +617,20 @@ POSTGRESQL_DDL = [
         created_at           TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(post_id, platform, metric_date)
     )""",
+
+    # 15. invoices (Billing & Quota)
+    """CREATE TABLE IF NOT EXISTS invoices (
+        id             SERIAL PRIMARY KEY,
+        workspace_id   INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        invoice_no     TEXT UNIQUE NOT NULL,
+        plan           TEXT NOT NULL,
+        amount         NUMERIC(12,2) NOT NULL,
+        status         TEXT NOT NULL DEFAULT 'paid',
+        billing_date   TEXT NOT NULL,
+        payment_method TEXT DEFAULT 'Credit Card',
+        pdf_url        TEXT
+    )""",
+
 ]
 
 POSTGRESQL_INDEXES = [
@@ -618,6 +649,7 @@ POSTGRESQL_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_approvals_post      ON approvals(post_id)",
     "CREATE INDEX IF NOT EXISTS idx_approvals_status    ON approvals(status)",
     "CREATE INDEX IF NOT EXISTS idx_prompt_name_active  ON prompt_versions(prompt_name, is_active)",
+    "CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id)",
 ]
 
 # Danh sach ten bang theo thu tu tao (phu thuoc)
@@ -626,7 +658,7 @@ TABLE_ORDER = [
     "companies", "brand", "projects", "campaigns",
     "posts", "assets", "knowledge",
     "schedules", "weekly_schedules", "approvals", "prompt_versions", "analytics",
-    "learning_insights",
+    "learning_insights", "invoices",
 ]
 
 

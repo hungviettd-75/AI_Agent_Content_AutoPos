@@ -15,28 +15,43 @@ class BillingModel:
 
     @staticmethod
     def ensure_tables():
-        """Tạo các bảng quản lý Invoices và gói cước."""
+        """Tao bang invoices dung cu phap cho SQLite va PostgreSQL."""
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            # Bảng lưu lịch sử thanh toán / hóa đơn
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS invoices (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workspace_id INTEGER NOT NULL,
-                    invoice_no   TEXT UNIQUE NOT NULL,
-                    plan         TEXT NOT NULL,
-                    amount       REAL NOT NULL,
-                    status       TEXT NOT NULL DEFAULT 'paid',
-                    billing_date TEXT NOT NULL,
-                    payment_method TEXT DEFAULT 'Credit Card',
-                    pdf_url      TEXT
-                )
-            """)
+            if _is_postgres():
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id             SERIAL PRIMARY KEY,
+                        workspace_id   INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                        invoice_no     TEXT UNIQUE NOT NULL,
+                        plan           TEXT NOT NULL,
+                        amount         NUMERIC(12,2) NOT NULL,
+                        status         TEXT NOT NULL DEFAULT 'paid',
+                        billing_date   TEXT NOT NULL,
+                        payment_method TEXT DEFAULT 'Credit Card',
+                        pdf_url        TEXT
+                    )
+                """)
+            else:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                        workspace_id   INTEGER NOT NULL,
+                        invoice_no     TEXT UNIQUE NOT NULL,
+                        plan           TEXT NOT NULL,
+                        amount         REAL NOT NULL,
+                        status         TEXT NOT NULL DEFAULT 'paid',
+                        billing_date   TEXT NOT NULL,
+                        payment_method TEXT DEFAULT 'Credit Card',
+                        pdf_url        TEXT
+                    )
+                """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id)")
             conn.commit()
         except Exception as e:
-            logger.error(f"[BILLING] Không thể khởi tạo bảng hóa đơn: {e}")
+            conn.rollback()
+            logger.error(f"[BILLING] Khong the khoi tao bang invoices: {e}", exc_info=True)
         finally:
             conn.close()
 
