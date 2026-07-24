@@ -198,16 +198,20 @@ st.markdown("""
     }
     
     /* Style cho cÃ¡c Tab Äiá»u HÆ°á»›ng */
+    .stTabs [role="tablist"],
     .stTabs [data-baseweb="tab-list"] {
         gap: 0.4rem !important;
         flex-wrap: wrap !important;
+        overflow: visible !important;
         background-color: #f1f3ff !important;
         padding: 6px !important;
         border-radius: 12px !important;
         border: 1px solid #c3c6d7 !important;
     }
+    .stTabs [role="tab"],
     .stTabs [data-baseweb="tab"] {
         height: auto !important;
+        min-height: 36px !important;
         white-space: nowrap !important;
         background-color: #ffffff !important;
         border: 1px solid #c3c6d7 !important;
@@ -219,18 +223,21 @@ st.markdown("""
         transition: all 0.2s ease-in-out !important;
         margin: 2px !important;
     }
+    .stTabs [role="tab"]:hover,
     .stTabs [data-baseweb="tab"]:hover {
         background-color: #e9edff !important;
         color: #141b2b !important;
         border-color: #737686 !important;
     }
+    .stTabs [role="tab"][aria-selected="true"],
     .stTabs [aria-selected="true"] {
         color: #ffffff !important;
         background: linear-gradient(135deg, #004ac6 0%, #2563eb 100%) !important;
         border: 1px solid #004ac6 !important;
         box-shadow: 0 4px 6px -1px rgba(0, 74, 198, 0.15) !important;
     }
-    .stTabs [data-baseweb="tab-highlight-block"] {
+    .stTabs [data-baseweb="tab-highlight-block"],
+    .stTabs [data-testid="stTabHighlight"] {
         display: none !important;
     }
     

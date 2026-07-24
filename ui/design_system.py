@@ -153,16 +153,20 @@ class DesignSystem:
             /* ============================================================
                5. TAB NAVIGATION
                ============================================================ */
+            .stTabs [role="tablist"],
             .stTabs [data-baseweb="tab-list"] {{
                 gap: 0.4rem !important;
                 flex-wrap: wrap !important;
+                overflow: visible !important;
                 background-color: {C.NEUTRAL_50} !important;
                 padding: 6px !important;
                 border-radius: {R.LG} !important;
                 border: 1px solid {C.NEUTRAL_300} !important;
             }}
+            .stTabs [role="tab"],
             .stTabs [data-baseweb="tab"] {{
                 height: auto !important;
+                min-height: 36px !important;
                 white-space: nowrap !important;
                 background-color: {C.WHITE} !important;
                 border: 1px solid {C.NEUTRAL_300} !important;
@@ -174,18 +178,21 @@ class DesignSystem:
                 transition: {A.FAST} !important;
                 margin: 2px !important;
             }}
+            .stTabs [role="tab"]:hover,
             .stTabs [data-baseweb="tab"]:hover {{
                 background-color: {C.PRIMARY_50} !important;
                 color: {C.NEUTRAL_900} !important;
                 border-color: {C.NEUTRAL_400} !important;
             }}
+            .stTabs [role="tab"][aria-selected="true"],
             .stTabs [aria-selected="true"] {{
                 color: {C.WHITE} !important;
                 background: linear-gradient(135deg, {C.PRIMARY} 0%, {C.PRIMARY_600} 100%) !important;
                 border: 1px solid {C.PRIMARY} !important;
                 box-shadow: {SH.PRIMARY_SM} !important;
             }}
-            .stTabs [data-baseweb="tab-highlight-block"] {{
+            .stTabs [data-baseweb="tab-highlight-block"],
+            .stTabs [data-testid="stTabHighlight"] {{
                 display: none !important;
             }}
 
