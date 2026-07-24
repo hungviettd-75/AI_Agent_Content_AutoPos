@@ -385,6 +385,39 @@ def init_db():
         })
         logger.info("[SCHEMA] ÄÃ£ xÃ¡c minh báº£ng learning_insights (Learning Loop).")
 
+        # Billing is optional UI, but production must self-heal its invoice table
+        # before the Billing & Quota page reads from it.
+        if _is_postgres():
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS invoices (
+                    id             SERIAL PRIMARY KEY,
+                    workspace_id   INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    invoice_no     TEXT UNIQUE NOT NULL,
+                    plan           TEXT NOT NULL,
+                    amount         NUMERIC(12,2) NOT NULL,
+                    status         TEXT NOT NULL DEFAULT 'paid',
+                    billing_date   TEXT NOT NULL,
+                    payment_method TEXT DEFAULT 'Credit Card',
+                    pdf_url        TEXT
+                )
+            """)
+        else:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS invoices (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id   INTEGER NOT NULL,
+                    invoice_no     TEXT UNIQUE NOT NULL,
+                    plan           TEXT NOT NULL,
+                    amount         REAL NOT NULL,
+                    status         TEXT NOT NULL DEFAULT 'paid',
+                    billing_date   TEXT NOT NULL,
+                    payment_method TEXT DEFAULT 'Credit Card',
+                    pdf_url        TEXT
+                )
+            """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id)")
+        logger.info("[SCHEMA] Da xac minh bang invoices (Billing & Quota).")
+
         conn.commit()
     finally:
         conn.close()

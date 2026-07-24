@@ -1,5 +1,4 @@
 """database/models/billing.py — DAO quản lý Subscription, Quota, Invoice cho Workspaces."""
-import json
 from datetime import datetime, timedelta
 import random
 from database.connection import managed_connection, get_db_connection, _adapt_sql, _is_postgres
@@ -133,18 +132,26 @@ class BillingModel:
 
     @staticmethod
     def get_invoices(workspace_id: int) -> list:
-        """Lấy danh sách hóa đơn thanh toán của Workspace."""
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                _adapt_sql("SELECT * FROM invoices WHERE workspace_id = ? ORDER BY billing_date DESC"),
-                (workspace_id,)
-            )
-            cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, r)) for r in cur.fetchall()]
-        finally:
-            conn.close()
+        """Lay danh sach hoa don; tu tao bang neu deployment cu con thieu."""
+        BillingModel.ensure_tables()
+        sql = _adapt_sql("SELECT * FROM invoices WHERE workspace_id = ? ORDER BY billing_date DESC")
+        for attempt in range(2):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute(sql, (workspace_id,))
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, r)) for r in cur.fetchall()]
+            except Exception as exc:
+                conn.rollback()
+                if attempt == 0 and "invoices" in str(exc).lower():
+                    logger.warning(f"[BILLING] invoices missing on read, creating table then retrying: {exc}")
+                    BillingModel.ensure_tables()
+                    continue
+                raise
+            finally:
+                conn.close()
+        return []
 
     @staticmethod
     def create_invoice(workspace_id: int, plan: str, amount: float, method: str = "Credit Card") -> bool:
@@ -155,6 +162,7 @@ class BillingModel:
             INSERT INTO invoices (workspace_id, invoice_no, plan, amount, status, billing_date, payment_method)
             VALUES (?,?,?,?,'paid',?,?)
         """)
+        BillingModel.ensure_tables()
         with managed_connection() as conn:
             cur = conn.cursor()
             cur.execute(sql, (workspace_id, inv_no, plan, amount, date_str, method))
@@ -176,6 +184,7 @@ class BillingModel:
                 INSERT INTO invoices (workspace_id, invoice_no, plan, amount, status, billing_date, payment_method)
                 VALUES (?,?,?,?,'paid',?,?)
             """)
+            BillingModel.ensure_tables()
             with managed_connection() as conn:
                 cur = conn.cursor()
                 try:
