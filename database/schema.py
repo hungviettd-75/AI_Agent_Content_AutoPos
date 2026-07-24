@@ -337,6 +337,25 @@ SQLITE_DDL = [
         pdf_url        TEXT
     )""",
 
+
+    # ----------------------------------------------------------
+    # 16. ai_logs (AI Cost Center)
+    # ----------------------------------------------------------
+    """CREATE TABLE IF NOT EXISTS ai_logs (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id      INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        provider          TEXT NOT NULL,
+        model_name        TEXT NOT NULL,
+        prompt_tokens     INTEGER DEFAULT 0,
+        completion_tokens INTEGER DEFAULT 0,
+        total_tokens      INTEGER DEFAULT 0,
+        cost              REAL DEFAULT 0.0,
+        latency_ms        INTEGER DEFAULT 0,
+        feature           TEXT,
+        status            TEXT NOT NULL DEFAULT 'success',
+        created_at        TEXT DEFAULT (datetime('now'))
+    )""",
+
 ]
 
 
@@ -362,6 +381,8 @@ SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_learning_workspace  ON learning_insights(workspace_id)",
     "CREATE INDEX IF NOT EXISTS idx_learning_type       ON learning_insights(insight_type, status)",
     "CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ai_logs_workspace ON ai_logs(workspace_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ai_logs_provider ON ai_logs(provider)",
 ]
 
 
@@ -631,6 +652,23 @@ POSTGRESQL_DDL = [
         pdf_url        TEXT
     )""",
 
+
+    # 16. ai_logs (AI Cost Center)
+    """CREATE TABLE IF NOT EXISTS ai_logs (
+        id                SERIAL PRIMARY KEY,
+        workspace_id      INT REFERENCES workspaces(id) ON DELETE CASCADE,
+        provider          TEXT NOT NULL,
+        model_name        TEXT NOT NULL,
+        prompt_tokens     INT DEFAULT 0,
+        completion_tokens INT DEFAULT 0,
+        total_tokens      INT DEFAULT 0,
+        cost              NUMERIC(12,6) DEFAULT 0.0,
+        latency_ms        INT DEFAULT 0,
+        feature           TEXT,
+        status            TEXT NOT NULL DEFAULT 'success',
+        created_at        TIMESTAMPTZ DEFAULT NOW()
+    )""",
+
 ]
 
 POSTGRESQL_INDEXES = [
@@ -650,6 +688,8 @@ POSTGRESQL_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_approvals_status    ON approvals(status)",
     "CREATE INDEX IF NOT EXISTS idx_prompt_name_active  ON prompt_versions(prompt_name, is_active)",
     "CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ai_logs_workspace ON ai_logs(workspace_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ai_logs_provider ON ai_logs(provider)",
 ]
 
 # Danh sach ten bang theo thu tu tao (phu thuoc)
@@ -658,7 +698,7 @@ TABLE_ORDER = [
     "companies", "brand", "projects", "campaigns",
     "posts", "assets", "knowledge",
     "schedules", "weekly_schedules", "approvals", "prompt_versions", "analytics",
-    "learning_insights", "invoices",
+    "learning_insights", "invoices", "ai_logs",
 ]
 
 

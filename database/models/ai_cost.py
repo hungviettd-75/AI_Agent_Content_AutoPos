@@ -1,5 +1,4 @@
 """database/models/ai_cost.py — DAO quản lý chi phí & tài nguyên cuộc gọi AI (Gemini, Claude, GPT)."""
-import json
 from datetime import datetime, timedelta
 import random
 from database.connection import managed_connection, get_db_connection, _adapt_sql, _is_postgres
@@ -9,31 +8,50 @@ class AICostModel:
 
     @staticmethod
     def ensure_table():
-        """Tự động tạo bảng ai_logs lưu chi phí Token, Latency, Cost."""
+        """Tao bang ai_logs dung cu phap cho SQLite va PostgreSQL."""
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS ai_logs (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workspace_id INTEGER,
-                    provider     TEXT NOT NULL,
-                    model_name   TEXT NOT NULL,
-                    prompt_tokens INTEGER DEFAULT 0,
-                    completion_tokens INTEGER DEFAULT 0,
-                    total_tokens INTEGER DEFAULT 0,
-                    cost         REAL DEFAULT 0.0,
-                    latency_ms   INTEGER DEFAULT 0,
-                    feature      TEXT,
-                    status       TEXT NOT NULL DEFAULT 'success',
-                    created_at   TEXT DEFAULT (datetime('now'))
-                )
-            """)
+            if _is_postgres():
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ai_logs (
+                        id                SERIAL PRIMARY KEY,
+                        workspace_id      INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+                        provider          TEXT NOT NULL,
+                        model_name        TEXT NOT NULL,
+                        prompt_tokens     INTEGER DEFAULT 0,
+                        completion_tokens INTEGER DEFAULT 0,
+                        total_tokens      INTEGER DEFAULT 0,
+                        cost              NUMERIC(12,6) DEFAULT 0.0,
+                        latency_ms        INTEGER DEFAULT 0,
+                        feature           TEXT,
+                        status            TEXT NOT NULL DEFAULT 'success',
+                        created_at        TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+            else:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ai_logs (
+                        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                        workspace_id      INTEGER,
+                        provider          TEXT NOT NULL,
+                        model_name        TEXT NOT NULL,
+                        prompt_tokens     INTEGER DEFAULT 0,
+                        completion_tokens INTEGER DEFAULT 0,
+                        total_tokens      INTEGER DEFAULT 0,
+                        cost              REAL DEFAULT 0.0,
+                        latency_ms        INTEGER DEFAULT 0,
+                        feature           TEXT,
+                        status            TEXT NOT NULL DEFAULT 'success',
+                        created_at        TEXT DEFAULT (datetime('now'))
+                    )
+                """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_workspace ON ai_logs(workspace_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_provider ON ai_logs(provider)")
             conn.commit()
         except Exception as e:
-            logger.error(f"[AI_COST] Không thể tạo bảng ai_logs: {e}")
+            conn.rollback()
+            logger.error(f"[AI_COST] Khong the tao bang ai_logs: {e}", exc_info=True)
         finally:
             conn.close()
 
@@ -51,6 +69,7 @@ class AICostModel:
         """)
         total = prompt_tokens + completion_tokens
         now = datetime.now().isoformat()
+        AICostModel.ensure_table()
         with managed_connection() as conn:
             cur = conn.cursor()
             cur.execute(sql, (
@@ -61,39 +80,50 @@ class AICostModel:
 
     @staticmethod
     def get_summary(workspace_id: int, days: int = 30) -> list:
-        """Lấy danh sách log sử dụng AI trong N ngày gần đây."""
+        """Lay log AI; tu tao bang neu deployment cu con thieu."""
+        AICostModel.ensure_table()
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            sql = _adapt_sql("""
-                SELECT * FROM ai_logs
-                WHERE workspace_id = ? AND created_at >= ?
-                ORDER BY created_at DESC
-            """)
-            cur.execute(sql, (workspace_id, cutoff))
-            cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, r)) for r in cur.fetchall()]
-        finally:
-            conn.close()
+        sql = _adapt_sql("""
+            SELECT * FROM ai_logs
+            WHERE workspace_id = ? AND created_at >= ?
+            ORDER BY created_at DESC
+        """)
+        for attempt in range(2):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute(sql, (workspace_id, cutoff))
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, r)) for r in cur.fetchall()]
+            except Exception as exc:
+                conn.rollback()
+                if attempt == 0 and "ai_logs" in str(exc).lower():
+                    logger.warning(f"[AI_COST] ai_logs missing on read, creating table then retrying: {exc}")
+                    AICostModel.ensure_table()
+                    continue
+                raise
+            finally:
+                conn.close()
+        return []
 
     @staticmethod
     def get_metrics_by_provider(workspace_id: int, days: int = 30) -> list:
-        """Thống kê chi tiết theo từng nhà cung cấp (provider)."""
+        """Thong ke provider; tu tao bang neu deployment cu con thieu."""
+        AICostModel.ensure_table()
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        sql = _adapt_sql("""
+            SELECT provider,
+                   SUM(total_tokens) as total_tokens,
+                   SUM(cost) as total_cost,
+                   AVG(latency_ms) as avg_latency,
+                   COUNT(*) as call_count
+            FROM ai_logs
+            WHERE workspace_id = ? AND created_at >= ?
+            GROUP BY provider
+        """)
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            sql = _adapt_sql("""
-                SELECT provider,
-                       SUM(total_tokens) as total_tokens,
-                       SUM(cost) as total_cost,
-                       AVG(latency_ms) as avg_latency,
-                       COUNT(*) as call_count
-                FROM ai_logs
-                WHERE workspace_id = ? AND created_at >= ?
-                GROUP BY provider
-            """)
             cur.execute(sql, (workspace_id, cutoff))
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, r)) for r in cur.fetchall()]

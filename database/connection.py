@@ -418,6 +418,44 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id)")
         logger.info("[SCHEMA] Da xac minh bang invoices (Billing & Quota).")
 
+        if _is_postgres():
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ai_logs (
+                    id                SERIAL PRIMARY KEY,
+                    workspace_id      INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+                    provider          TEXT NOT NULL,
+                    model_name        TEXT NOT NULL,
+                    prompt_tokens     INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    total_tokens      INTEGER DEFAULT 0,
+                    cost              NUMERIC(12,6) DEFAULT 0.0,
+                    latency_ms        INTEGER DEFAULT 0,
+                    feature           TEXT,
+                    status            TEXT NOT NULL DEFAULT 'success',
+                    created_at        TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+        else:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ai_logs (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id      INTEGER,
+                    provider          TEXT NOT NULL,
+                    model_name        TEXT NOT NULL,
+                    prompt_tokens     INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    total_tokens      INTEGER DEFAULT 0,
+                    cost              REAL DEFAULT 0.0,
+                    latency_ms        INTEGER DEFAULT 0,
+                    feature           TEXT,
+                    status            TEXT NOT NULL DEFAULT 'success',
+                    created_at        TEXT DEFAULT (datetime('now'))
+                )
+            """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_workspace ON ai_logs(workspace_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_provider ON ai_logs(provider)")
+        logger.info("[SCHEMA] Da xac minh bang ai_logs (AI Cost Center).")
+
         conn.commit()
     finally:
         conn.close()
