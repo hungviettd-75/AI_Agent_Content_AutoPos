@@ -152,9 +152,9 @@ def render_top_navigation_tabs(show_admin: bool = False) -> bool:
                 st.markdown("<div class='apex-topnav-group-spacer'></div>", unsafe_allow_html=True)
             tab_changed = _render_button_grid(group_name, tab_items, active_nav) or tab_changed
 
-    if tab_changed:
-        st.rerun()
-
+    # A button click already triggers a Streamlit rerun. By this point the new
+    # active_nav is in session_state, so app/main.py can render the selected page
+    # in the same pass instead of forcing a second full rerun.
     return tab_changed
 
 

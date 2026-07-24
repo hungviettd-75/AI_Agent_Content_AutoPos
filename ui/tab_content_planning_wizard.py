@@ -2101,9 +2101,17 @@ Mỗi object bắt buộc có đúng các field:
     if not can_edit:
         st.info("Viewer mode: bạn có thể xem và xuất kế hoạch, nhưng không thể lưu draft bài viết.")
 
-    tabs = st.tabs(["Thiết lập kế hoạch", "12 nhóm chủ đề", "Lịch nội dung", "Chống lặp ý tưởng"])
+    wizard_sections = ["Thi?t l?p k? ho?ch", "12 nh?m ch? ??", "L?ch n?i dung", "Ch?ng l?p ? t??ng"]
+    selected_section = st.pills(
+        "Content Planning sections",
+        wizard_sections,
+        default=wizard_sections[0],
+        key=f"{planner_key}_active_section",
+        label_visibility="collapsed",
+        width="stretch",
+    ) or wizard_sections[0]
 
-    with tabs[0]:
+    if selected_section == wizard_sections[0]: 
         c1, c2, c3 = st.columns(3)
         with c1:
             plan_mode = st.selectbox("Chu kỳ lập lịch", ["Lịch tuần", "Lịch tháng", "Kế hoạch 365 ngày", "Tùy chỉnh"], key=f"{planner_key}_mode")
@@ -2155,7 +2163,7 @@ Mỗi object bắt buộc có đúng các field:
             st.dataframe(generated_df[preview_cols].head(10), use_container_width=True, hide_index=True)
             st.caption("Mở tab Lịch nội dung để lọc theo tháng, nền tảng, nhóm nội dung, tải CSV hoặc lưu vào Draft Posts.")
 
-    with tabs[1]:
+    elif selected_section == wizard_sections[1]: 
         st.markdown("##### 12 nhóm chủ đề lớn từ tài liệu gốc")
         rows = []
         current_pillars = LOGISTICS_PILLAR_BANK if st.session_state.get(f"{planner_key}_industry", "Logistics") == "Logistics" else pillar_bank
@@ -2166,7 +2174,7 @@ Mỗi object bắt buộc có đúng các field:
         current_sample = LOGISTICS_SAMPLE_30 if st.session_state.get(f"{planner_key}_industry", "Logistics") == "Logistics" else sample_30
         st.dataframe(pd.DataFrame({"Ngày": list(range(1, 31)), "Chủ đề": current_sample}), use_container_width=True, hide_index=True)
 
-    with tabs[2]:
+    elif selected_section == wizard_sections[2]: 
         df = st.session_state.get(planner_key)
         if df is None or df.empty:
             render_empty_state("Chưa có lịch nội dung", "Chọn thiết lập và bấm Tạo lịch chủ đề để sinh kế hoạch tuần, tháng hoặc 365 ngày.", icon="calendar")
@@ -2224,7 +2232,7 @@ Mỗi object bắt buộc có đúng các field:
                         created += 1
                     st.success(f"Đã lưu {created} draft posts.")
 
-    with tabs[3]:
+    elif selected_section == wizard_sections[3]: 
         df = st.session_state.get(planner_key)
         if df is None or df.empty:
             st.info("Sau khi tạo lịch, hệ thống sẽ kiểm tra trùng chủ đề tại đây.")

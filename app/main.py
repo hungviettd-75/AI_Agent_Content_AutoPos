@@ -540,29 +540,22 @@ if not user_payload:
         st.markdown("</div></div></div>", unsafe_allow_html=True)
     st.stop()
 
-# Load workspace modules only after authentication to keep the logon screen responsive.
+# Load only the shared shell modules up front. Page modules are imported lazily
+# after navigation is resolved so switching tabs on Streamlit Cloud does less work.
+from importlib import import_module
+
 from core.rbac import MANAGER_ROLES, get_role_display, render_permissions_table, ALL_ROLES
-from ui.tab_content_planning_wizard import clear_content_strategy_session_state, render_tab_content_planning_wizard
-from ui.tab_logistics_growth import render_tab_logistics_growth
-from ui.tab_content_studio_workspace import render_tab_content_studio_workspace
-from ui.tab_factcheck import render_tab_factcheck
-from ui.tab_publishing import render_tab_publishing
-from ui.tab_analytics import render_tab_analytics
-from ui.tab_workflow import render_tab_workflow
-from ui.tab_approval import render_tab_approval
-from ui.tab_learning import render_tab_learning
-from ui.tab_ab_testing import render_tab_ab_testing
-from ui.tab_ai_cost import render_tab_ai_cost
-from ui.tab_billing import render_tab_billing
-from ui.tab_monitoring import render_tab_monitoring
-from ui.tab_company_brain import render_tab_company_brain
-from ui.tab_knowledge import render_tab_knowledge
-from ui.tab_brand import render_tab_brand
-from ui.tab_audit import render_tab_audit
-from ui.tab_thumbnail_studio import render_tab_thumbnail_studio
-from ui.tab_thumbnail_analytics import render_tab_thumbnail_analytics
 from ui.nav_config import DEFAULT_NAV, get_nav_groups
 from ui.top_navigation_tabs import render_top_navigation_tabs
+
+
+def _load_view(module_name: str, function_name: str):
+    return getattr(import_module(module_name), function_name)
+
+
+def _clear_content_strategy_session_state() -> None:
+    clear_fn = _load_view("ui.tab_content_planning_wizard", "clear_content_strategy_session_state")
+    clear_fn()
 
 # --- Náº¾U ÄÃƒ ÄÄ‚NG NHáº¬P THÃ€NH CÃ”NG ---
 current_user = st.session_state['current_user']
@@ -618,7 +611,7 @@ selected_ws_id = st.sidebar.selectbox(
 )
 
 if selected_ws_id != st.session_state['active_workspace_id']:
-    clear_content_strategy_session_state()
+    _clear_content_strategy_session_state()
     st.session_state['active_workspace_id'] = selected_ws_id
     st.rerun()
 
@@ -688,43 +681,43 @@ st.markdown(
 ws_id = st.session_state['active_workspace_id']
 
 if active_page == "🚀 Logistics Growth Center":
-    render_tab_logistics_growth(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role, user_id=user_id)
+    _load_view("ui.tab_logistics_growth", "render_tab_logistics_growth")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role, user_id=user_id)
 
 elif active_page == "🗓️ Content Planning (Wizard)":
-    render_tab_content_planning_wizard(gemini_key, workspace_id=ws_id, role=active_ws_role, user_id=user_id, user_email=current_user.get("email", ""))
+    _load_view("ui.tab_content_planning_wizard", "render_tab_content_planning_wizard")(gemini_key, workspace_id=ws_id, role=active_ws_role, user_id=user_id, user_email=current_user.get("email", ""))
 
 elif active_page == "🎨 Content Studio Workspace":
-    render_tab_content_studio_workspace(
+    _load_view("ui.tab_content_studio_workspace", "render_tab_content_studio_workspace")(
         gemini_key, workspace_id=ws_id, user_id=user_id,
         user_email=current_user.get("email", ""), role=active_ws_role
     )
 
 elif active_page == "🧠 Knowledge Center":
-    render_tab_knowledge(
+    _load_view("ui.tab_knowledge", "render_tab_knowledge")(
         workspace_id=ws_id, user_id=user_id,
         user_email=current_user.get("email", ""), role=active_ws_role
     )
 
 elif active_page == "🏢 Company Brain":
-    render_tab_company_brain(
+    _load_view("ui.tab_company_brain", "render_tab_company_brain")(
         workspace_id=ws_id, user_id=user_id,
         user_email=current_user.get("email", ""), role=active_ws_role
     )
 
 elif active_page == "🎗️ Brand Identity":
-    render_tab_brand(
+    _load_view("ui.tab_brand", "render_tab_brand")(
         workspace_id=ws_id, user_id=user_id,
         user_email=current_user.get("email", ""), role=active_ws_role
     )
 
 elif active_page == "🔍 Fact Check":
-    render_tab_factcheck(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_factcheck", "render_tab_factcheck")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "🎨 Thumbnail Studio":
-    render_tab_thumbnail_studio(workspace_id=ws_id, user_id=user_id, user_email=current_user.get("email", ""), role=active_ws_role, api_key=gemini_key)
+    _load_view("ui.tab_thumbnail_studio", "render_tab_thumbnail_studio")(workspace_id=ws_id, user_id=user_id, user_email=current_user.get("email", ""), role=active_ws_role, api_key=gemini_key)
 
 elif active_page == "📢 Publishing Agent":
-    render_tab_publishing(
+    _load_view("ui.tab_publishing", "render_tab_publishing")(
         gemini_key=gemini_key, fb_page_id=fb_page_id, fb_access_token=fb_access_token,
         zalo_access_token=zalo_access_token, linkedin_author_urn=linkedin_author_urn,
         linkedin_access_token=linkedin_access_token, workspace_id=ws_id,
@@ -732,31 +725,31 @@ elif active_page == "📢 Publishing Agent":
     )
 
 elif active_page == "⛓️ Workflow Engine":
-    render_tab_workflow(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_workflow", "render_tab_workflow")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "⚖️ Quy trình phê duyệt":
-    render_tab_approval(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_approval", "render_tab_approval")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "📈 Analytics Agent":
-    render_tab_analytics(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_analytics", "render_tab_analytics")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "📊 Thumbnail Analytics":
-    render_tab_thumbnail_analytics(workspace_id=ws_id, user_id=user_id, user_email=current_user.get("email", ""), role=active_ws_role)
+    _load_view("ui.tab_thumbnail_analytics", "render_tab_thumbnail_analytics")(workspace_id=ws_id, user_id=user_id, user_email=current_user.get("email", ""), role=active_ws_role)
 
 elif active_page == "🧠 Learning Loop":
-    render_tab_learning(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_learning", "render_tab_learning")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "🧪 A/B Testing":
-    render_tab_ab_testing(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_ab_testing", "render_tab_ab_testing")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "💰 AI Cost Center":
-    render_tab_ai_cost(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_ai_cost", "render_tab_ai_cost")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "💳 Billing & Quota":
-    render_tab_billing(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_billing", "render_tab_billing")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "🖥️ System Monitor":
-    render_tab_monitoring(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_monitoring", "render_tab_monitoring")(gemini_key=gemini_key, workspace_id=ws_id, role=active_ws_role)
 
 elif active_page == "⚙️ Quản lý Workspace" and show_admin_tab:
     st.header("⚙️ Quản lý thành viên & Cài đặt Workspace")
@@ -868,7 +861,7 @@ elif active_page == "⚙️ Quản lý Workspace" and show_admin_tab:
                         else:
                             st.error("Có lỗi xảy ra khi thêm thành viên.")
 elif active_page == "🗒️ Audit Log" and show_admin_tab:
-    render_tab_audit(workspace_id=ws_id, role=active_ws_role)
+    _load_view("ui.tab_audit", "render_tab_audit")(workspace_id=ws_id, role=active_ws_role)
 
 
 
