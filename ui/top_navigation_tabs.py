@@ -90,6 +90,10 @@ def _button_key(tab_name: str) -> str:
     return f"topnav_{safe}"
 
 
+def _set_active_nav(tab_name: str) -> None:
+    st.session_state["active_nav"] = tab_name
+
+
 def _chunks(items: list[str], size: int) -> list[list[str]]:
     return [items[i:i + size] for i in range(0, len(items), size)]
 
@@ -122,9 +126,10 @@ def _render_button_grid(group_name: str, tab_items: list[str], active_nav: str) 
                     key=_button_key(tab_name),
                     type="primary" if is_active else "secondary",
                     use_container_width=True,
+                    on_click=_set_active_nav,
+                    args=(tab_name,),
                 )
-                if clicked and not is_active:
-                    st.session_state["active_nav"] = tab_name
+                if clicked and active_nav != tab_name:
                     tab_changed = True
 
     return tab_changed
