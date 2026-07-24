@@ -13,45 +13,22 @@ from config import settings
 from database.connection import init_db
 from database.models.users import UserModel
 from database.models.workspaces import WorkspaceModel
-from database.repositories import PostRepository, WeeklyScheduleRepository, KnowledgeRepository
 from core.auth import encode_jwt, decode_jwt
-from core.rbac import (
-    MANAGER_ROLES, get_role_display, has_permission,
-    render_role_badge, render_permissions_table, ALL_ROLES
-)
 from core.audit_logger import (
     log_login, log_login_failed, log_logout, log_register,
     log_create_workspace, log_add_member, log_remove_member, log_change_role
 )
-from ui.tab_content_planning_wizard import clear_content_strategy_session_state, render_tab_content_planning_wizard
-from ui.tab_logistics_growth import render_tab_logistics_growth
-from ui.tab_content_studio_workspace import render_tab_content_studio_workspace
-from ui.tab_factcheck import render_tab_factcheck
-from ui.tab_publishing import render_tab_publishing
-from ui.tab_analytics import render_tab_analytics
-from ui.tab_workflow import render_tab_workflow
-from ui.tab_planning import render_tab_planning
-from ui.tab_campaign import render_tab_campaign
-from ui.tab_approval import render_tab_approval
-from ui.tab_learning import render_tab_learning
-from ui.tab_ab_testing import render_tab_ab_testing
-from ui.tab_ai_cost import render_tab_ai_cost
-from ui.tab_billing import render_tab_billing
-from ui.tab_monitoring import render_tab_monitoring
-from ui.tab_company_brain import render_tab_company_brain
-from ui.tab_knowledge import render_tab_knowledge
-from ui.tab_brand import render_tab_brand
-from ui.tab_audit import render_tab_audit
-from ui.tab_thumbnail_studio import render_tab_thumbnail_studio
-from ui.tab_thumbnail_analytics import render_tab_thumbnail_analytics
-from ui.nav_config import DEFAULT_NAV, get_nav_groups
-from ui.top_navigation_tabs import render_top_navigation_tabs
-
-# Khá»Ÿi táº¡o Database náº¿u chÆ°a tá»“n táº¡i
-init_db()
 
 # Khá»Ÿi táº¡o giao diá»‡n trang
 st.set_page_config(page_title="Apex AI Logistics - Sales & Marketing Growth", layout="wide", page_icon="🚀")
+
+@st.cache_resource(show_spinner=False)
+def ensure_database_ready():
+    """Run schema setup once per Streamlit process instead of every rerun."""
+    init_db()
+    return True
+
+ensure_database_ready()
 
 # NhÃºng Custom CSS cho giao diá»‡n chuyÃªn nghiá»‡p cá»§a Apex AI
 st.markdown("""
@@ -553,7 +530,32 @@ if not user_payload:
                         st.success("Tao tai khoan thanh cong. Hay dang nhap de bat dau.")
                     except Exception as exc:
                         st.error(f"Không tạo được tài khoản: {exc}")
+        st.markdown("</div></div></div>", unsafe_allow_html=True)
     st.stop()
+
+# Load workspace modules only after authentication to keep the logon screen responsive.
+from core.rbac import MANAGER_ROLES, get_role_display, render_permissions_table, ALL_ROLES
+from ui.tab_content_planning_wizard import clear_content_strategy_session_state, render_tab_content_planning_wizard
+from ui.tab_logistics_growth import render_tab_logistics_growth
+from ui.tab_content_studio_workspace import render_tab_content_studio_workspace
+from ui.tab_factcheck import render_tab_factcheck
+from ui.tab_publishing import render_tab_publishing
+from ui.tab_analytics import render_tab_analytics
+from ui.tab_workflow import render_tab_workflow
+from ui.tab_approval import render_tab_approval
+from ui.tab_learning import render_tab_learning
+from ui.tab_ab_testing import render_tab_ab_testing
+from ui.tab_ai_cost import render_tab_ai_cost
+from ui.tab_billing import render_tab_billing
+from ui.tab_monitoring import render_tab_monitoring
+from ui.tab_company_brain import render_tab_company_brain
+from ui.tab_knowledge import render_tab_knowledge
+from ui.tab_brand import render_tab_brand
+from ui.tab_audit import render_tab_audit
+from ui.tab_thumbnail_studio import render_tab_thumbnail_studio
+from ui.tab_thumbnail_analytics import render_tab_thumbnail_analytics
+from ui.nav_config import DEFAULT_NAV, get_nav_groups
+from ui.top_navigation_tabs import render_top_navigation_tabs
 
 # --- Náº¾U ÄÃƒ ÄÄ‚NG NHáº¬P THÃ€NH CÃ”NG ---
 current_user = st.session_state['current_user']

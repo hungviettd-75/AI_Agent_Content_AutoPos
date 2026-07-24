@@ -221,6 +221,69 @@ def _sample_leads() -> pd.DataFrame:
     ])
 
 
+def _sample_shipments() -> pd.DataFrame:
+    today = date.today()
+    rows = []
+    samples = [
+        ("SHP-2607-001", "Minh An Coffee", "Viet Nam", "Japan", "DHL Express", "Air Freight", 860, 3, 3, "Delivered"),
+        ("SHP-2607-002", "Lotus Fashion", "Viet Nam", "United States", "FedEx International", "Air Freight", 1420, 5, 6, "In Transit"),
+        ("SHP-2607-003", "Saigon Parts", "Viet Nam", "Germany", "UPS Worldwide", "Air Freight", 1980, 5, 5, "Delivered"),
+        ("SHP-2607-004", "Mekong Foods", "Viet Nam", "Singapore", "DHL Express", "Air Freight", 520, 2, 2, "Delivered"),
+        ("SHP-2607-005", "Nova Retail", "Viet Nam", "Canada", "Kuehne+Nagel Road/Air", "Hybrid", 1240, 8, 10, "Delayed"),
+        ("SHP-2607-006", "Blue Ocean Import", "Viet Nam", "Australia", "CMA CGM LCL", "Sea LCL", 3120, 22, 24, "In Transit"),
+        ("SHP-2607-007", "An Phu Electronics", "Viet Nam", "South Korea", "FedEx International", "Air Freight", 930, 4, 4, "Delivered"),
+        ("SHP-2607-008", "Green Farm Export", "Viet Nam", "Japan", "Maersk LCL", "Sea LCL", 2680, 18, 21, "Delayed"),
+        ("SHP-2607-009", "Urban Home", "Viet Nam", "France", "UPS Worldwide", "Air Freight", 1760, 6, 7, "In Transit"),
+        ("SHP-2607-010", "Binh Minh Trading", "Viet Nam", "Singapore", "DHL Express", "Air Freight", 610, 2, 2, "Delivered"),
+        ("SHP-2607-011", "Vina Textile", "Viet Nam", "Germany", "Maersk LCL", "Sea LCL", 3450, 24, 27, "Delayed"),
+        ("SHP-2607-012", "Asia Marketplace", "Viet Nam", "United States", "FedEx International", "Air Freight", 1510, 5, 5, "Delivered"),
+    ]
+    for idx, item in enumerate(samples):
+        shipment_id, customer, origin, destination, carrier, mode, cost, planned_eta, actual_eta, status = item
+        ship_date = today - timedelta(days=58 - idx * 5)
+        rows.append({
+            "shipment_id": shipment_id,
+            "customer": customer,
+            "origin_country": origin,
+            "destination_country": destination,
+            "carrier": carrier,
+            "mode": mode,
+            "ship_date": ship_date.isoformat(),
+            "month": ship_date.strftime("%Y-%m"),
+            "shipping_cost_usd": cost,
+            "planned_eta_days": planned_eta,
+            "actual_eta_days": actual_eta,
+            "status": status,
+        })
+    return pd.DataFrame(rows)
+
+
+def _prepare_shipping_dashboard(df: pd.DataFrame) -> pd.DataFrame:
+    prepared = df.copy()
+    required_defaults = {
+        "shipment_id": "",
+        "customer": "",
+        "origin_country": "",
+        "destination_country": "",
+        "carrier": "",
+        "mode": "",
+        "ship_date": date.today().isoformat(),
+        "status": "In Transit",
+    }
+    for col, default in required_defaults.items():
+        if col not in prepared.columns:
+            prepared[col] = default
+    for col in ["shipping_cost_usd", "planned_eta_days", "actual_eta_days"]:
+        prepared[col] = pd.to_numeric(prepared.get(col, 0), errors="coerce").fillna(0)
+    ship_dates = pd.to_datetime(prepared["ship_date"], errors="coerce")
+    if "month" not in prepared.columns:
+        prepared["month"] = "Unknown"
+    prepared["month"] = ship_dates.dt.strftime("%Y-%m").fillna(prepared["month"])
+    prepared["is_late"] = prepared["actual_eta_days"] > prepared["planned_eta_days"]
+    prepared["delay_days"] = (prepared["actual_eta_days"] - prepared["planned_eta_days"]).clip(lower=0)
+    return prepared
+
+
 def _score_lead(row: pd.Series) -> int:
     score = 20
     shipments = int(row.get("monthly_shipments") or 0)
@@ -1085,7 +1148,7 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
     st.markdown("### AI Sales & Marketing Growth Platform for Logistics")
     st.caption("Quản lý lead, chấm điểm cơ hội, tạo campaign funnel và kịch bản follow-up cho dịch vụ vận chuyển, fulfillment, kho bãi và tối ưu logistics.")
 
-    tabs = st.tabs(["Lead Pipeline", "Lead Scoring", "Campaign Funnel", "Sales Scripts", "Freight Quote", "Shipping Calculator", "International Tracking", "HS Code", "Customs Assistant", "Export Consultant", "Quote Generator", "AI Sales Agent", "AI Knowledge Base", "AI Route Planner", "AI Margin Simulator", "Growth Dashboard"])
+    tabs = st.tabs(["Lead Pipeline", "Lead Scoring", "Campaign Funnel", "Sales Scripts", "Freight Quote", "Shipping Calculator", "International Tracking", "HS Code", "Customs Assistant", "Export Consultant", "Quote Generator", "AI Sales Agent", "AI Knowledge Base", "AI Route Planner", "AI Margin Simulator", "AI Shipping Dashboard"])
 
     with tabs[0]:
         st.markdown("##### Logistics Lead Pipeline")
@@ -1683,19 +1746,119 @@ def render_tab_logistics_growth(gemini_key: str = "", workspace_id: int = 1, rol
         st.success(margin_recommendation)
 
     with tabs[15]:
-        st.markdown("##### Growth Dashboard")
-        df = st.session_state[leads_key].copy()
-        if df.empty:
-            st.info("Chưa có dữ liệu lead.")
+        st.markdown("##### AI Shipping Dashboard")
+        st.caption("Tong hop hieu suat van chuyen: shipment volume, monthly cost, ETA, on-time rate, cost by country, carrier, customer, and delayed shipment alerts.")
+
+        shipments_key = _growth_key(workspace_id, "shipments")
+        if shipments_key not in st.session_state:
+            st.session_state[shipments_key] = _sample_shipments()
+
+        upload = st.file_uploader("Import shipment CSV", type=["csv"], key=f"{shipments_key}_upload", disabled=not can_edit)
+        if upload is not None and can_edit:
+            imported = pd.read_csv(upload)
+            st.session_state[shipments_key] = imported
+            st.success(f"Imported {len(imported)} shipments.")
+
+        raw_shipments = st.session_state[shipments_key].copy()
+        if raw_shipments.empty:
+            st.info("Chua co du lieu lo hang. Hay import CSV hoac them dong moi trong bang ben duoi.")
         else:
-            df["score"] = df.apply(_score_lead, axis=1)
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Total leads", len(df))
-            m2.metric("High-score leads", int((df["score"] >= 75).sum()))
-            m3.metric("Open pipeline", int(df[~df["stage"].isin(["Won", "Lost"])].shape[0]))
-            m4.metric("Avg score", round(float(df["score"].mean()), 1))
-            stage_counts = df["stage"].value_counts().reindex(PIPELINE_STAGES, fill_value=0).reset_index()
-            stage_counts.columns = ["Stage", "Leads"]
-            st.bar_chart(stage_counts, x="Stage", y="Leads", use_container_width=True)
-            st.markdown("##### Growth Operating Rhythm")
-            st.markdown("- Mỗi tuần tạo 1 campaign funnel theo segment ưu tiên.\n- Mỗi ngày xử lý lead High-score trước.\n- Mỗi proposal phải gắn KPI: SLA, giao thành công, chi phí/đơn, hoàn hàng.\n- Mỗi khách Won cần tạo case study sau 45-60 ngày để quay lại Marketing.")
+            display_cols = [
+                "shipment_id",
+                "customer",
+                "origin_country",
+                "destination_country",
+                "carrier",
+                "mode",
+                "ship_date",
+                "shipping_cost_usd",
+                "planned_eta_days",
+                "actual_eta_days",
+                "status",
+            ]
+            for col in display_cols:
+                if col not in raw_shipments.columns:
+                    raw_shipments[col] = "" if col not in {"shipping_cost_usd", "planned_eta_days", "actual_eta_days"} else 0
+
+            edited_shipments = st.data_editor(
+                raw_shipments[display_cols],
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic" if can_edit else "fixed",
+                disabled=not can_edit,
+                column_config={
+                    "shipping_cost_usd": st.column_config.NumberColumn("shipping_cost_usd", min_value=0.0, step=50.0),
+                    "planned_eta_days": st.column_config.NumberColumn("planned_eta_days", min_value=0, step=1),
+                    "actual_eta_days": st.column_config.NumberColumn("actual_eta_days", min_value=0, step=1),
+                    "status": st.column_config.SelectboxColumn("status", options=["Delivered", "In Transit", "Delayed", "Exception", "Cancelled"]),
+                },
+                key=f"{shipments_key}_editor",
+            )
+            if can_edit:
+                st.session_state[shipments_key] = edited_shipments
+
+            shipments = _prepare_shipping_dashboard(edited_shipments)
+            total_shipments = len(shipments)
+            total_cost = float(shipments["shipping_cost_usd"].sum())
+            avg_eta = float(shipments["actual_eta_days"].mean()) if total_shipments else 0.0
+            on_time_rate = float((~shipments["is_late"]).mean() * 100) if total_shipments else 0.0
+            delayed_count = int(shipments["is_late"].sum())
+
+            k1, k2, k3, k4, k5 = st.columns(5)
+            k1.metric("Tong so lo hang", f"{total_shipments:,}")
+            k2.metric("Tong chi phi", f"${total_cost:,.0f}")
+            k3.metric("ETA trung binh", f"{avg_eta:.1f} ngay")
+            k4.metric("Ty le dung han", f"{on_time_rate:.1f}%")
+            k5.metric("Lo hang cham", delayed_count)
+
+            cost_by_month = shipments.groupby("month", as_index=False)["shipping_cost_usd"].sum().sort_values("month")
+            country_cost = shipments.groupby("destination_country", as_index=False)["shipping_cost_usd"].sum().sort_values("shipping_cost_usd", ascending=False)
+            carrier_cost = shipments.groupby("carrier", as_index=False)["shipping_cost_usd"].sum().sort_values("shipping_cost_usd", ascending=False)
+            customer_cost = shipments.groupby("customer", as_index=False)["shipping_cost_usd"].sum().sort_values("shipping_cost_usd", ascending=False)
+
+            chart_a, chart_b = st.columns(2)
+            with chart_a:
+                st.markdown("##### Chi phi van chuyen theo thang")
+                st.line_chart(cost_by_month, x="month", y="shipping_cost_usd", use_container_width=True)
+            with chart_b:
+                st.markdown("##### Chi phi theo quoc gia")
+                st.bar_chart(country_cost, x="destination_country", y="shipping_cost_usd", use_container_width=True)
+
+            chart_c, chart_d = st.columns(2)
+            with chart_c:
+                st.markdown("##### Chi phi theo hang")
+                st.bar_chart(carrier_cost, x="carrier", y="shipping_cost_usd", use_container_width=True)
+            with chart_d:
+                st.markdown("##### Chi phi theo khach hang")
+                st.bar_chart(customer_cost.head(10), x="customer", y="shipping_cost_usd", use_container_width=True)
+
+            delayed_shipments = shipments[shipments["is_late"]].sort_values(["delay_days", "shipping_cost_usd"], ascending=[False, False])
+            st.markdown("##### Canh bao lo hang cham")
+            if delayed_shipments.empty:
+                st.success("Khong co lo hang cham so voi ETA ke hoach.")
+            else:
+                st.warning(f"Co {len(delayed_shipments)} lo hang cham. Uu tien lien he carrier va cap nhat khach hang trong ngay.")
+                st.dataframe(
+                    delayed_shipments[[
+                        "shipment_id",
+                        "customer",
+                        "destination_country",
+                        "carrier",
+                        "planned_eta_days",
+                        "actual_eta_days",
+                        "delay_days",
+                        "shipping_cost_usd",
+                        "status",
+                    ]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            st.download_button(
+                "Export shipping dashboard CSV",
+                shipments.to_csv(index=False).encode("utf-8-sig"),
+                "ai_shipping_dashboard.csv",
+                "text/csv",
+                use_container_width=True,
+                key=f"{shipments_key}_download",
+            )
