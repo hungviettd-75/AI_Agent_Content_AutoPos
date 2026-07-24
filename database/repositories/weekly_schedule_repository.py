@@ -4,7 +4,13 @@ from database.connection import get_db_connection, managed_connection, _adapt_sq
 
 class WeeklyScheduleRepository:
     @staticmethod
+    def _require_workspace(workspace_id: int) -> None:
+        if workspace_id is None:
+            raise ValueError("workspace_id is required")
+
+    @staticmethod
     def add_weekly_schedule(week_start: str, plan_json: str, workspace_id: int = None) -> int:
+        WeeklyScheduleRepository._require_workspace(workspace_id)
         sql = _adapt_sql(
             "INSERT INTO weekly_schedules (week_start, plan_json, workspace_id) VALUES (?, ?, ?)"
         )
@@ -23,15 +29,12 @@ class WeeklyScheduleRepository:
     @staticmethod
     def get_latest_weekly_schedule(workspace_id: int = None) -> dict:
         """Lấy kế hoạch tuần mới nhất của workspace này."""
+        WeeklyScheduleRepository._require_workspace(workspace_id)
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            if workspace_id:
-                sql = _adapt_sql("SELECT plan_json FROM weekly_schedules WHERE workspace_id = ? ORDER BY id DESC LIMIT 1")
-                cur.execute(sql, (workspace_id,))
-            else:
-                sql = "SELECT plan_json FROM weekly_schedules ORDER BY id DESC LIMIT 1"
-                cur.execute(sql)
+            sql = _adapt_sql("SELECT plan_json FROM weekly_schedules WHERE workspace_id = ? ORDER BY id DESC LIMIT 1")
+            cur.execute(sql, (workspace_id,))
             row = cur.fetchone()
             if row:
                 try:

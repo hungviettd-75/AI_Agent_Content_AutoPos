@@ -59,14 +59,15 @@ def execute_pending_schedules(workspace_id: int, fb_page_id=None, fb_access_toke
     for sched in all_schedules:
         sched_id = sched["id"]
         post_id = sched["post_id"]
+        sched_workspace_id = sched.get("workspace_id") or workspace_id
         platform = sched["platform"].lower()
         retry_count = sched.get("retry_count", 0)
         is_retry = sched.get("status") == "failed"
         
         # Cập nhật trạng thái đang xử lý
-        ScheduleModel.update_status(sched_id, "processing")
+        ScheduleModel.update_status(sched_id, "processing", workspace_id=sched_workspace_id)
         
-        post_data = PostModel.get_by_id(post_id)
+        post_data = PostModel.get_by_id(post_id, workspace_id=sched_workspace_id)
         content = post_data.get("content", "")
         
         success = False
@@ -89,12 +90,12 @@ def execute_pending_schedules(workspace_id: int, fb_page_id=None, fb_access_toke
             msg = f"FB: {fb_msg} | Zalo: {zalo_msg} | LI: {li_msg}"
             
         if success:
-            ScheduleModel.update_status(sched_id, "published", published_at=datetime.now().isoformat())
-            PostModel.update_status(post_id, "published")
+            ScheduleModel.update_status(sched_id, "published", published_at=datetime.now().isoformat(), workspace_id=sched_workspace_id)
+            PostModel.update_status(post_id, "published", workspace_id=sched_workspace_id)
             results.append({"id": sched_id, "status": "Thành công", "message": prefix + msg})
         else:
             # update_status sẽ tự tăng retry_count nếu status="failed"
-            ScheduleModel.update_status(sched_id, "failed", error_message=prefix + msg)
+            ScheduleModel.update_status(sched_id, "failed", error_message=prefix + msg, workspace_id=sched_workspace_id)
             results.append({"id": sched_id, "status": "Thất bại", "message": prefix + msg})
             
     return results

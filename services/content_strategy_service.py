@@ -1010,8 +1010,8 @@ def _approval_required_for_item(item: dict, explicit: bool = None) -> bool:
     return bool(metadata.get("approval_required") or metadata.get("requires_approval"))
 
 
-def _latest_approval_status(post_id: int) -> str:
-    latest = ApprovalModel.get_latest_by_post(post_id)
+def _latest_approval_status(post_id: int, workspace_id: int = None) -> str:
+    latest = ApprovalModel.get_latest_by_post(post_id, workspace_id=workspace_id)
     return latest.get("status") or "not_requested"
 
 
@@ -1027,7 +1027,7 @@ def sync_calendar_publishing_status(workspace_id: int, company_id: int, strategy
         post_id = item.get("post_id")
         schedule_id = item.get("schedule_id")
         if post_id:
-            post = PostModel.get_by_id(post_id)
+            post = PostModel.get_by_id(post_id, workspace_id=workspace_id)
             if not post or post.get("workspace_id") != workspace_id:
                 return {"ok": False, "error": "Linked post not found for this workspace"}
             post_status = post.get("status")
@@ -1044,7 +1044,7 @@ def sync_calendar_publishing_status(workspace_id: int, company_id: int, strategy
                 publishing_status = "failed"
             elif post_status == "draft" and publishing_status == "planned":
                 publishing_status = "draft_created"
-            latest = ApprovalModel.get_latest_by_post(post_id)
+            latest = ApprovalModel.get_latest_by_post(post_id, workspace_id=workspace_id)
             if latest.get("status") == "pending":
                 approval_status = "in_review"
             elif latest.get("status") == "approved":
@@ -1052,7 +1052,7 @@ def sync_calendar_publishing_status(workspace_id: int, company_id: int, strategy
             elif latest.get("status") in {"rejected", "revision_requested"}:
                 approval_status = "rejected"
         if schedule_id:
-            schedule = ScheduleModel.get_by_id(schedule_id)
+            schedule = ScheduleModel.get_by_id(schedule_id, workspace_id=workspace_id)
             if schedule and schedule.get("workspace_id") == workspace_id:
                 sched_status = schedule.get("status")
                 if sched_status == "published":
@@ -1113,7 +1113,7 @@ def handoff_calendar_item_to_content_studio_draft(workspace_id: int, company_id:
         if not item:
             return {"ok": False, "error": "Calendar item not found for this strategy"}
         if item.get("post_id"):
-            post = PostModel.get_by_id(item["post_id"])
+            post = PostModel.get_by_id(item["post_id"], workspace_id=workspace_id)
             if post and post.get("workspace_id") == workspace_id:
                 sync_calendar_publishing_status(workspace_id, company_id, strategy_id, calendar_item_id, updated_by=created_by)
                 return {"ok": True, "post_id": item["post_id"], "status": post.get("status", "draft"), "duplicate_prevented": True}
@@ -1489,7 +1489,7 @@ class StrategyContextService:
     @staticmethod
     def build_context(workspace_id: int, company_id: int, inputs: dict = None) -> dict:
         inputs = inputs or {}
-        company = CompanyModel.get_by_id(company_id)
+        company = CompanyModel.get_by_id(company_id, workspace_id=workspace_id)
         if not company or company.get("workspace_id") != workspace_id:
             raise ValueError("Company does not belong to workspace")
 
@@ -1672,7 +1672,7 @@ class ContentStrategyService:
 
     @staticmethod
     def get_business_context_seed(workspace_id: int, company_id: int) -> dict:
-        company = CompanyModel.get_by_id(company_id)
+        company = CompanyModel.get_by_id(company_id, workspace_id=workspace_id)
         if not company or company.get("workspace_id") != workspace_id:
             raise ValueError("Company does not belong to workspace")
         brand = BrandModel.get_by_workspace(workspace_id)
@@ -1681,7 +1681,7 @@ class ContentStrategyService:
     @staticmethod
     def get_brand_identity_seed(workspace_id: int, company_id: int = None) -> dict:
         if company_id:
-            company = CompanyModel.get_by_id(company_id)
+            company = CompanyModel.get_by_id(company_id, workspace_id=workspace_id)
             if not company or company.get("workspace_id") != workspace_id:
                 raise ValueError("Company does not belong to workspace")
         return normalize_brand_identity(brand=BrandModel.get_by_workspace(workspace_id))
@@ -1689,7 +1689,7 @@ class ContentStrategyService:
     @staticmethod
     def normalize_draft(draft: dict, workspace_id: int = None, company_id: int = None) -> dict:
         draft = draft or {}
-        company = CompanyModel.get_by_id(company_id) if company_id else {}
+        company = CompanyModel.get_by_id(company_id, workspace_id=workspace_id) if company_id else {}
         if company_id and (not company or company.get("workspace_id") != workspace_id):
             raise ValueError("Company does not belong to workspace")
         brand = BrandModel.get_by_workspace(workspace_id) if workspace_id else {}
@@ -1714,7 +1714,7 @@ class ContentStrategyService:
         try:
             if not confirmed:
                 return {"ok": False, "error": "Explicit confirmation is required before updating global Brand Identity."}
-            company = CompanyModel.get_by_id(company_id)
+            company = CompanyModel.get_by_id(company_id, workspace_id=workspace_id)
             if not company or company.get("workspace_id") != workspace_id:
                 return {"ok": False, "error": "Company does not belong to workspace"}
             brand_data = normalize_brand_identity(customization)

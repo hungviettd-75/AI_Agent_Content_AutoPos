@@ -37,11 +37,14 @@ class CampaignModel:
             return cur.lastrowid
 
     @staticmethod
-    def get_by_id(campaign_id: int) -> dict:
+    def get_by_id(campaign_id: int, workspace_id: int = None) -> dict:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("SELECT * FROM campaigns WHERE id=?"), (campaign_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("SELECT * FROM campaigns WHERE id=? AND workspace_id=?"), (campaign_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("SELECT * FROM campaigns WHERE id=?"), (campaign_id,))
             row = cur.fetchone()
             if not row:
                 return {}
@@ -83,14 +86,20 @@ class CampaignModel:
             conn.close()
 
     @staticmethod
-    def list_by_project(project_id: int) -> list:
+    def list_by_project(project_id: int, workspace_id: int = None) -> list:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(
-                _adapt_sql("SELECT * FROM campaigns WHERE project_id=? ORDER BY created_at DESC"),
-                (project_id,)
-            )
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM campaigns WHERE project_id=? AND workspace_id=? ORDER BY created_at DESC"),
+                    (project_id, workspace_id)
+                )
+            else:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM campaigns WHERE project_id=? ORDER BY created_at DESC"),
+                    (project_id,)
+                )
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
         finally:
@@ -98,6 +107,7 @@ class CampaignModel:
 
     @staticmethod
     def update(campaign_id: int, **kwargs) -> bool:
+        workspace_id = kwargs.pop("workspace_id", None)
         allowed = {"name", "objective", "platforms", "target_audience",
                    "budget", "start_date", "end_date", "status"}
         fields = {}
@@ -109,18 +119,25 @@ class CampaignModel:
             return False
         fields["updated_at"] = datetime.now().isoformat()
         set_clause = ", ".join([f"{k}=?" for k in fields])
-        sql = _adapt_sql(f"UPDATE campaigns SET {set_clause} WHERE id=?")
+        sql = f"UPDATE campaigns SET {set_clause} WHERE id=?"
+        params = [*fields.values(), campaign_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (*fields.values(), campaign_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod
-    def get_post_count(campaign_id: int) -> int:
+    def get_post_count(campaign_id: int, workspace_id: int = None) -> int:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("SELECT COUNT(*) FROM posts WHERE campaign_id=?"), (campaign_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("SELECT COUNT(*) FROM posts WHERE campaign_id=? AND workspace_id=?"), (campaign_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("SELECT COUNT(*) FROM posts WHERE campaign_id=?"), (campaign_id,))
             return cur.fetchone()[0]
         finally:
             conn.close()

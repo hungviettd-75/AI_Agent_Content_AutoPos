@@ -3,6 +3,11 @@ from database.models.knowledge import KnowledgeModel
 
 class KnowledgeRepository:
     @staticmethod
+    def _require_workspace(workspace_id: int) -> None:
+        if workspace_id is None:
+            raise ValueError("workspace_id is required")
+
+    @staticmethod
     def save_knowledge_post(
         date=None, platform="", topic="", audience="",
         tool_name="", knowledge_type="", difficulty="",
@@ -14,6 +19,7 @@ class KnowledgeRepository:
         version: str = "1.0",
         tags: list = None
     ) -> int:
+        KnowledgeRepository._require_workspace(workspace_id)
         return KnowledgeModel.create(
             content=content,
             topic=topic,
@@ -35,6 +41,7 @@ class KnowledgeRepository:
 
     @staticmethod
     def get_knowledge_posts(status=None, platform=None, limit=None, workspace_id: int = None) -> pd.DataFrame:
+        KnowledgeRepository._require_workspace(workspace_id)
         return KnowledgeModel.list_all(
             status=status,
             platform=platform,
@@ -43,5 +50,6 @@ class KnowledgeRepository:
         )
 
     @staticmethod
-    def delete_knowledge_post(post_id) -> bool:
-        return KnowledgeModel.delete(post_id)
+    def delete_knowledge_post(post_id, workspace_id: int = None) -> bool:
+        KnowledgeRepository._require_workspace(workspace_id)
+        return KnowledgeModel.delete(post_id, workspace_id=workspace_id)

@@ -40,11 +40,14 @@ class KnowledgeModel:
             return cur.lastrowid
 
     @staticmethod
-    def get_by_id(knowledge_id: int) -> dict:
+    def get_by_id(knowledge_id: int, workspace_id: int = None) -> dict:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("SELECT * FROM knowledge WHERE id=?"), (knowledge_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("SELECT * FROM knowledge WHERE id=? AND workspace_id=?"), (knowledge_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("SELECT * FROM knowledge WHERE id=?"), (knowledge_id,))
             row = cur.fetchone()
             if not row:
                 return {}
@@ -85,19 +88,26 @@ class KnowledgeModel:
             conn.close()
 
     @staticmethod
-    def update_status(knowledge_id: int, status: str) -> bool:
-        sql = _adapt_sql("UPDATE knowledge SET status=?, updated_at=? WHERE id=?")
+    def update_status(knowledge_id: int, status: str, workspace_id: int = None) -> bool:
+        sql = "UPDATE knowledge SET status=?, updated_at=? WHERE id=?"
+        params = [status, datetime.now().isoformat(), knowledge_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (status, datetime.now().isoformat(), knowledge_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod
-    def delete(knowledge_id: int) -> bool:
+    def delete(knowledge_id: int, workspace_id: int = None) -> bool:
         logger.info(f"[AUDIT] Xoa knowledge ID={knowledge_id}")
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("DELETE FROM knowledge WHERE id=?"), (knowledge_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("DELETE FROM knowledge WHERE id=? AND workspace_id=?"), (knowledge_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("DELETE FROM knowledge WHERE id=?"), (knowledge_id,))
             return cur.rowcount > 0
 
     @staticmethod

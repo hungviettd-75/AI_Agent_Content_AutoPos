@@ -87,14 +87,20 @@ class AnalyticsModel:
             return cur.rowcount > 0
 
     @staticmethod
-    def get_by_post(post_id: int) -> list:
+    def get_by_post(post_id: int, workspace_id: int = None) -> list:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(
-                _adapt_sql("SELECT * FROM analytics WHERE post_id=? ORDER BY metric_date ASC"),
-                (post_id,)
-            )
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM analytics WHERE post_id=? AND workspace_id=? ORDER BY metric_date ASC"),
+                    (post_id, workspace_id)
+                )
+            else:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM analytics WHERE post_id=? ORDER BY metric_date ASC"),
+                    (post_id,)
+                )
             cols = [d[0] for d in cur.description]
             rows = []
             for row in cur.fetchall():

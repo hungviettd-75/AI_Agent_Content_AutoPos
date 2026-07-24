@@ -65,25 +65,20 @@ class PromptVersionModel:
 
     @staticmethod
     def get_active(prompt_name: str, workspace_id: int = None) -> dict:
-        """Lấy phiên bản active của prompt."""
+        """Return the active prompt version for the requested scope."""
         conn = get_db_connection()
         try:
             cur = conn.cursor()
             if workspace_id:
-                # Tìm bản active trong workspace, nếu không thấy thì fallback sang global (workspace_id IS NULL)
                 cur.execute(
                     _adapt_sql("SELECT * FROM prompt_versions WHERE prompt_name=? AND workspace_id=? AND is_active=1"),
                     (prompt_name, workspace_id)
                 )
-                row = cur.fetchone()
-                if row:
-                    return dict(row)
-            
-            # Global fallback
-            cur.execute(
-                _adapt_sql("SELECT * FROM prompt_versions WHERE prompt_name=? AND workspace_id IS NULL AND is_active=1"),
-                (prompt_name,)
-            )
+            else:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM prompt_versions WHERE prompt_name=? AND workspace_id IS NULL AND is_active=1"),
+                    (prompt_name,)
+                )
             row = cur.fetchone()
             return dict(row) if row else {}
         finally:
@@ -130,9 +125,13 @@ class PromptVersionModel:
             conn.close()
 
     @staticmethod
-    def update_performance_score(prompt_version_id: int, score: float) -> bool:
-        sql = _adapt_sql("UPDATE prompt_versions SET performance_score=? WHERE id=?")
+    def update_performance_score(prompt_version_id: int, score: float, workspace_id: int = None) -> bool:
+        sql = "UPDATE prompt_versions SET performance_score=? WHERE id=?"
+        params = [score, prompt_version_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (score, prompt_version_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0

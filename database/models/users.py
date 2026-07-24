@@ -8,6 +8,7 @@ import secrets
 from datetime import datetime
 from database.connection import managed_connection, get_db_connection, _adapt_sql, _is_postgres
 from config.config import logger
+from core.rbac import normalize_role
 
 
 def _hash_password(password: str) -> str:
@@ -33,6 +34,7 @@ class UserModel:
     def create(email: str, username: str, password: str,
                full_name: str = "", role: str = "editor") -> int:
         """Tao user moi. Tra ve ID vua tao."""
+        role = normalize_role(role)
         logger.info(f"[AUDIT] Tao user moi: {username} ({email})")
         password_hash = _hash_password(password)
         now = datetime.now().isoformat()
@@ -55,7 +57,11 @@ class UserModel:
             cur = conn.cursor()
             cur.execute(_adapt_sql("SELECT * FROM users WHERE id = ?"), (user_id,))
             row = cur.fetchone()
-            return dict(row) if row else {}
+            if not row:
+                return {}
+            user = dict(row)
+            user["role"] = normalize_role(user.get("role"))
+            return user
         finally:
             conn.close()
 
@@ -66,7 +72,11 @@ class UserModel:
             cur = conn.cursor()
             cur.execute(_adapt_sql("SELECT * FROM users WHERE email = ?"), (email,))
             row = cur.fetchone()
-            return dict(row) if row else {}
+            if not row:
+                return {}
+            user = dict(row)
+            user["role"] = normalize_role(user.get("role"))
+            return user
         finally:
             conn.close()
 
@@ -89,6 +99,8 @@ class UserModel:
     def update(user_id: int, **kwargs) -> bool:
         allowed = {"full_name", "avatar_url", "role", "is_active"}
         fields = {k: v for k, v in kwargs.items() if k in allowed}
+        if "role" in fields:
+            fields["role"] = normalize_role(fields["role"])
         if not fields:
             return False
         fields["updated_at"] = datetime.now().isoformat()
@@ -109,6 +121,9 @@ class UserModel:
             else:
                 cur.execute("SELECT id,email,username,full_name,role,is_active,created_at FROM users")
             cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, row)) for row in cur.fetchall()]
+            users = [dict(zip(cols, row)) for row in cur.fetchall()]
+            for user in users:
+                user["role"] = normalize_role(user.get("role"))
+            return users
         finally:
             conn.close()

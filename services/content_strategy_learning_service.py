@@ -325,7 +325,7 @@ class ContentStrategyLearningService:
         insight = LearningInsightModel.get_by_id(insight_id, workspace_id=workspace_id, company_id=company_id)
         if not insight:
             return {"ok": False, "error": "Insight not found for this workspace/company"}
-        ok = LearningInsightModel.update_status(insight_id, "accepted", user_id=user_id)
+        ok = LearningInsightModel.update_status(insight_id, "accepted", user_id=user_id, workspace_id=workspace_id)
         return {"ok": ok, "insight_id": insight_id, "status": "accepted" if ok else insight.get("status")}
 
     @staticmethod
@@ -333,7 +333,7 @@ class ContentStrategyLearningService:
         insight = LearningInsightModel.get_by_id(insight_id, workspace_id=workspace_id, company_id=company_id)
         if not insight:
             return {"ok": False, "error": "Insight not found for this workspace/company"}
-        ok = LearningInsightModel.update_status(insight_id, "rejected", user_id=user_id, reason=reason)
+        ok = LearningInsightModel.update_status(insight_id, "rejected", user_id=user_id, reason=reason, workspace_id=workspace_id)
         return {"ok": ok, "insight_id": insight_id, "status": "rejected" if ok else insight.get("status")}
 
     @staticmethod
@@ -371,8 +371,8 @@ class ContentStrategyLearningService:
         metadata["applied_learning_insights"] = applied
         metadata["strategy_revision_source"] = "learning_loop"
         ContentStrategyRepository.update_strategy(workspace_id, company_id, strategy_id, metadata=metadata, updated_by=user_id)
-        LearningInsightModel.update_status(insight_id, "applied", user_id=user_id, applied_version_id=version_id)
-        LearningInsightModel.increment_applied(insight_id)
+        LearningInsightModel.update_status(insight_id, "applied", user_id=user_id, applied_version_id=version_id, workspace_id=workspace_id)
+        LearningInsightModel.increment_applied(insight_id, workspace_id=workspace_id)
         return {"ok": True, "strategy_id": strategy_id, "insight_id": insight_id, "version_id": version_id}
 
     @staticmethod

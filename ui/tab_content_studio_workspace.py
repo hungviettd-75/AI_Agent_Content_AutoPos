@@ -448,7 +448,7 @@ def render_tab_content_studio_workspace(gemini_key, workspace_id: int = None, us
                         platform_to_load = "Facebook"
                         
                     # Tải thông tin ảnh đã đính kèm (nếu có)
-                    assets_list = AssetModel.list_by_post(selected_load_id)
+                    assets_list = AssetModel.list_by_post(selected_load_id, workspace_id=workspace_id)
                     attached_url = None
                     attached_id = None
                     if assets_list:
@@ -535,7 +535,7 @@ def render_tab_content_studio_workspace(gemini_key, workspace_id: int = None, us
                     workspace_id=workspace_id
                 )
                 if st.session_state.get(media_attached_id_key):
-                    AssetModel.attach_to_post(st.session_state[media_attached_id_key], post_id)
+                    AssetModel.attach_to_post(st.session_state[media_attached_id_key], post_id, workspace_id=workspace_id)
                 st.success(f"💾 Đã lưu bài đăng nháp (ID: `#{post_id}`)")
         with act_col2:
             if st.button("🧠 Lưu vào Tri thức", use_container_width=True):
@@ -566,7 +566,7 @@ def render_tab_content_studio_workspace(gemini_key, workspace_id: int = None, us
                 )
                 # Đính kèm ảnh vào bài viết trong cơ sở dữ liệu nếu có
                 if st.session_state.get(media_attached_id_key):
-                    AssetModel.attach_to_post(st.session_state[media_attached_id_key], post_id)
+                    AssetModel.attach_to_post(st.session_state[media_attached_id_key], post_id, workspace_id=workspace_id)
                 # Đăng ký yêu cầu phê duyệt để hiển thị trong tab Quy trình phê duyệt
                 ApprovalModel.request(
                     post_id,

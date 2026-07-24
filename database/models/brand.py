@@ -72,13 +72,14 @@ class BrandModel:
         """Tao moi hoac cap nhat brand profile cua workspace."""
         existing = BrandModel.get_by_workspace(workspace_id)
         if existing:
-            BrandModel.update(existing["id"], **kwargs)
+            BrandModel.update(existing["id"], workspace_id=workspace_id, **kwargs)
             return existing["id"]
         else:
             return BrandModel.create(workspace_id=workspace_id, **kwargs)
 
     @staticmethod
     def update(brand_id: int, **kwargs) -> bool:
+        workspace_id = kwargs.pop("workspace_id", None)
         allowed = {"tone_of_voice", "target_audiences", "brand_colors",
                    "logo_url", "tagline", "brand_guidelines", "blacklist_words",
                    "cta", "vision", "mission", "keywords"}
@@ -94,10 +95,14 @@ class BrandModel:
             return False
         fields["updated_at"] = datetime.now().isoformat()
         set_clause = ", ".join([f"{k}=?" for k in fields])
-        sql = _adapt_sql(f"UPDATE brand SET {set_clause} WHERE id=?")
+        sql = f"UPDATE brand SET {set_clause} WHERE id=?"
+        params = [*fields.values(), brand_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (*fields.values(), brand_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod

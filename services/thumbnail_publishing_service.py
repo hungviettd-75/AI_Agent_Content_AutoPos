@@ -523,7 +523,7 @@ class ThumbnailApprovalGate:
         Lấy tất cả assets là thumbnail của bài viết.
         Nhận biết qua tags.thumbnail.is_thumbnail == True.
         """
-        all_assets = AssetModel.list_by_post(post_id)
+        all_assets = AssetModel.list_by_post(post_id, workspace_id=workspace_id)
         thumbnails = []
         for asset in all_assets:
             tags = _read_asset_tags(asset)
@@ -583,7 +583,7 @@ class ThumbnailApprovalGate:
         Approve thumbnail nhanh từ Publishing UI (dành cho admin/super_admin).
         Ghi lifecycle.status = 'approved' vào assets.tags.
         """
-        asset = AssetModel.get_by_id(asset_id)
+        asset = AssetModel.get_by_id(asset_id, workspace_id=workspace_id)
         if not asset:
             logger.warning(f"[ApprovalGate] Asset #{asset_id} không tồn tại.")
             return False
@@ -614,7 +614,7 @@ class ThumbnailApprovalGate:
         rejected_by: int, reason: str = "",
     ) -> bool:
         """Reject thumbnail — trả về draft."""
-        asset = AssetModel.get_by_id(asset_id)
+        asset = AssetModel.get_by_id(asset_id, workspace_id=workspace_id)
         if not asset:
             return False
         tags = _read_asset_tags(asset)
@@ -667,7 +667,7 @@ def check_publish_readiness(
     # --- Check 1: Post Approval ---
     post_approved = False
     if require_post_approval:
-        latest_approval = ApprovalModel.get_latest_by_post(post_id)
+        latest_approval = ApprovalModel.get_latest_by_post(post_id, workspace_id=workspace_id)
         post_approved = latest_approval.get("status") == "approved"
         if not post_approved:
             if user_role in ("admin", "super_admin"):
@@ -881,13 +881,14 @@ class RetryManager:
         cls,
         schedule_id: int,
         error_message: str,
+        workspace_id: int = None,
     ) -> bool:
         """
         Đánh dấu schedule để retry:
         - Nếu còn retry: increment retry_count, status=pending, ghi error
         - Nếu hết retry: status=failed, KHÔNG tăng retry_count thêm
         """
-        sched = ScheduleModel.get_by_id(schedule_id)
+        sched = ScheduleModel.get_by_id(schedule_id, workspace_id=workspace_id)
         if not sched:
             return False
 
@@ -897,6 +898,7 @@ class RetryManager:
             ScheduleModel.update_status(
                 schedule_id, "failed",
                 error_message=f"[MAX_RETRY_{retry_count}/{cls.MAX_RETRIES}] {error_message}",
+                workspace_id=workspace_id,
             )
             logger.error(
                 f"[RetryManager] Schedule #{schedule_id} FAILED — "
@@ -905,7 +907,7 @@ class RetryManager:
             return False
 
         # Tăng retry_count trước
-        new_retry_count = ScheduleModel.increment_retry(schedule_id)
+        new_retry_count = ScheduleModel.increment_retry(schedule_id, workspace_id=workspace_id)
         strategy_label, _ = cls.get_strategy(retry_count)
         new_error_msg = (
             f"[Retry {new_retry_count}/{cls.MAX_RETRIES} · {strategy_label}] "
@@ -914,6 +916,7 @@ class RetryManager:
         ScheduleModel.update_status(
             schedule_id, "pending",
             error_message=new_error_msg,
+            workspace_id=workspace_id,
         )
         logger.info(
             f"[RetryManager] Schedule #{schedule_id} → "

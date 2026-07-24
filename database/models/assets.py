@@ -36,11 +36,14 @@ class AssetModel:
             return cur.lastrowid
 
     @staticmethod
-    def get_by_id(asset_id: int) -> dict:
+    def get_by_id(asset_id: int, workspace_id: int = None) -> dict:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("SELECT * FROM assets WHERE id=?"), (asset_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("SELECT * FROM assets WHERE id=? AND workspace_id=?"), (asset_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("SELECT * FROM assets WHERE id=?"), (asset_id,))
             row = cur.fetchone()
             if not row:
                 return {}
@@ -87,30 +90,52 @@ class AssetModel:
             conn.close()
 
     @staticmethod
-    def list_by_post(post_id: int) -> list:
+    def list_by_post(post_id: int, workspace_id: int = None) -> list:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(
-                _adapt_sql("SELECT * FROM assets WHERE post_id=? ORDER BY created_at"),
-                (post_id,)
-            )
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM assets WHERE post_id=? AND workspace_id=? ORDER BY created_at"),
+                    (post_id, workspace_id)
+                )
+            else:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM assets WHERE post_id=? ORDER BY created_at"),
+                    (post_id,)
+                )
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
         finally:
             conn.close()
 
     @staticmethod
-    def attach_to_post(asset_id: int, post_id: int) -> bool:
+    def attach_to_post(asset_id: int, post_id: int, workspace_id: int = None) -> bool:
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("UPDATE assets SET post_id=? WHERE id=?"), (post_id, asset_id))
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("""
+                        UPDATE assets SET post_id=?
+                        WHERE id=? AND workspace_id=?
+                        AND EXISTS (
+                            SELECT 1 FROM posts
+                            WHERE posts.id=? AND posts.workspace_id=assets.workspace_id
+                        )
+                    """),
+                    (post_id, asset_id, workspace_id, post_id),
+                )
+            else:
+                cur.execute(_adapt_sql("UPDATE assets SET post_id=? WHERE id=?"), (post_id, asset_id))
             return cur.rowcount > 0
 
     @staticmethod
-    def delete(asset_id: int) -> bool:
+    def delete(asset_id: int, workspace_id: int = None) -> bool:
         logger.info(f"[AUDIT] Xoa asset ID={asset_id}")
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("DELETE FROM assets WHERE id=?"), (asset_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("DELETE FROM assets WHERE id=? AND workspace_id=?"), (asset_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("DELETE FROM assets WHERE id=?"), (asset_id,))
             return cur.rowcount > 0

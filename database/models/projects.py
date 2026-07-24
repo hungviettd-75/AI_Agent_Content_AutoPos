@@ -30,11 +30,14 @@ class ProjectModel:
             return cur.lastrowid
 
     @staticmethod
-    def get_by_id(project_id: int) -> dict:
+    def get_by_id(project_id: int, workspace_id: int = None) -> dict:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("SELECT * FROM projects WHERE id=?"), (project_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("SELECT * FROM projects WHERE id=? AND workspace_id=?"), (project_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("SELECT * FROM projects WHERE id=?"), (project_id,))
             row = cur.fetchone()
             return dict(row) if row else {}
         finally:
@@ -58,22 +61,30 @@ class ProjectModel:
 
     @staticmethod
     def update(project_id: int, **kwargs) -> bool:
+        workspace_id = kwargs.pop("workspace_id", None)
         allowed = {"name", "description", "status", "start_date", "end_date", "company_id"}
         fields = {k: v for k, v in kwargs.items() if k in allowed}
         if not fields:
             return False
         fields["updated_at"] = datetime.now().isoformat()
         set_clause = ", ".join([f"{k}=?" for k in fields])
-        sql = _adapt_sql(f"UPDATE projects SET {set_clause} WHERE id=?")
+        sql = f"UPDATE projects SET {set_clause} WHERE id=?"
+        params = [*fields.values(), project_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (*fields.values(), project_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod
-    def delete(project_id: int) -> bool:
+    def delete(project_id: int, workspace_id: int = None) -> bool:
         logger.info(f"[AUDIT] Xoa project ID={project_id}")
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("DELETE FROM projects WHERE id=?"), (project_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("DELETE FROM projects WHERE id=? AND workspace_id=?"), (project_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("DELETE FROM projects WHERE id=?"), (project_id,))
             return cur.rowcount > 0

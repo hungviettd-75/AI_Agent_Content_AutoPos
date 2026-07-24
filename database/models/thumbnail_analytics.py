@@ -352,10 +352,10 @@ class ThumbnailAnalyticsModel:
         
         now = datetime.now().isoformat()
         if row:
-            sql_update = _adapt_sql("UPDATE thumbnail_template_stats SET usage_count=usage_count+1, last_used_at=?, updated_at=? WHERE id=?")
+            sql_update = _adapt_sql("UPDATE thumbnail_template_stats SET usage_count=usage_count+1, last_used_at=?, updated_at=? WHERE id=? AND workspace_id=?")
             with managed_connection() as conn:
                 cur = conn.cursor()
-                cur.execute(sql_update, (now, now, row[0]))
+                cur.execute(sql_update, (now, now, row[0], workspace_id))
                 return True
         else:
             sql_insert = _adapt_sql("""

@@ -14,6 +14,11 @@ from config.config import logger
 class AuditRepository:
 
     @staticmethod
+    def _require_workspace(workspace_id: int | None) -> None:
+        if workspace_id is None:
+            raise ValueError("workspace_id is required")
+
+    @staticmethod
     def get_logs(
         workspace_id: int | None = None,
         user_email: str | None = None,
@@ -25,6 +30,7 @@ class AuditRepository:
         Lấy danh sách audit log có lọc theo workspace / email / action / entity_type.
         Trả về DataFrame sắp xếp mới nhất trước.
         """
+        AuditRepository._require_workspace(workspace_id)
         sql = """
             SELECT
                 id,
@@ -43,9 +49,8 @@ class AuditRepository:
         """
         params = []
 
-        if workspace_id is not None:
-            sql += _adapt_sql(" AND (workspace_id = ? OR workspace_id IS NULL)")
-            params.append(workspace_id)
+        sql += _adapt_sql(" AND workspace_id = ?")
+        params.append(workspace_id)
 
         if user_email:
             sql += _adapt_sql(" AND user_email LIKE ?")
@@ -78,11 +83,10 @@ class AuditRepository:
         """
         Thống kê nhanh: tổng log, số hành động theo loại.
         """
+        AuditRepository._require_workspace(workspace_id)
         sql = "SELECT action, COUNT(*) as cnt FROM audit_logs WHERE 1=1"
-        params = []
-        if workspace_id is not None:
-            sql += _adapt_sql(" AND (workspace_id = ? OR workspace_id IS NULL)")
-            params.append(workspace_id)
+        sql += _adapt_sql(" AND workspace_id = ?")
+        params = [workspace_id]
         sql += " GROUP BY action ORDER BY cnt DESC"
 
         conn = get_db_connection()

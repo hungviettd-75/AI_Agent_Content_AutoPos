@@ -27,31 +27,41 @@ class ApprovalModel:
 
     @staticmethod
     def respond(approval_id: int, status: str,
-                approved_by: int = None, notes: str = "") -> bool:
+                approved_by: int = None, notes: str = "", workspace_id: int = None) -> bool:
         """Phe duyet / tu choi / yeu cau chinh sua."""
         if status not in ApprovalModel.VALID_STATUS:
             logger.warning(f"Trang thai phe duyet khong hop le: {status}")
             return False
         now = datetime.now().isoformat()
-        sql = _adapt_sql("""
+        sql = """
             UPDATE approvals SET status=?, approved_by=?, notes=?, responded_at=? WHERE id=?
-        """)
+        """
+        params = [status, approved_by, notes, now, approval_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         logger.info(f"[AUDIT] Phan hoi phe duyet ID={approval_id}: {status}")
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (status, approved_by, notes, now, approval_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod
-    def get_by_post(post_id: int) -> list:
+    def get_by_post(post_id: int, workspace_id: int = None) -> list:
         """Lay lich su phe duyet cua mot bai viet."""
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(
-                _adapt_sql("SELECT * FROM approvals WHERE post_id=? ORDER BY requested_at DESC"),
-                (post_id,)
-            )
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM approvals WHERE post_id=? AND workspace_id=? ORDER BY requested_at DESC"),
+                    (post_id, workspace_id)
+                )
+            else:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM approvals WHERE post_id=? ORDER BY requested_at DESC"),
+                    (post_id,)
+                )
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
         finally:
@@ -77,15 +87,21 @@ class ApprovalModel:
             conn.close()
 
     @staticmethod
-    def get_latest_by_post(post_id: int) -> dict:
+    def get_latest_by_post(post_id: int, workspace_id: int = None) -> dict:
         """Lay trang thai phe duyet moi nhat cua bai viet."""
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(
-                _adapt_sql("SELECT * FROM approvals WHERE post_id=? ORDER BY requested_at DESC LIMIT 1"),
-                (post_id,)
-            )
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM approvals WHERE post_id=? AND workspace_id=? ORDER BY requested_at DESC LIMIT 1"),
+                    (post_id, workspace_id)
+                )
+            else:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM approvals WHERE post_id=? ORDER BY requested_at DESC LIMIT 1"),
+                    (post_id,)
+                )
             row = cur.fetchone()
             return dict(row) if row else {}
         finally:

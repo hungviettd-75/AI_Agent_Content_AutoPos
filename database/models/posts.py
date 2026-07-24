@@ -42,11 +42,14 @@ class PostModel:
             return cur.lastrowid
 
     @staticmethod
-    def get_by_id(post_id: int) -> dict:
+    def get_by_id(post_id: int, workspace_id: int = None) -> dict:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("SELECT * FROM posts WHERE id=?"), (post_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("SELECT * FROM posts WHERE id=? AND workspace_id=?"), (post_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("SELECT * FROM posts WHERE id=?"), (post_id,))
             row = cur.fetchone()
             if not row:
                 return {}
@@ -102,22 +105,26 @@ class PostModel:
             conn.close()
 
     @staticmethod
-    def update_status(post_id: int, status: str, approved_by: int = None) -> bool:
+    def update_status(post_id: int, status: str, approved_by: int = None, workspace_id: int = None) -> bool:
         now = datetime.now().isoformat()
         if approved_by:
-            sql = _adapt_sql("UPDATE posts SET status=?, approved_by=?, updated_at=? WHERE id=?")
-            params = (status, approved_by, now, post_id)
+            sql = "UPDATE posts SET status=?, approved_by=?, updated_at=? WHERE id=?"
+            params = [status, approved_by, now, post_id]
         else:
-            sql = _adapt_sql("UPDATE posts SET status=?, updated_at=? WHERE id=?")
-            params = (status, now, post_id)
+            sql = "UPDATE posts SET status=?, updated_at=? WHERE id=?"
+            params = [status, now, post_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         logger.info(f"[AUDIT] Cap nhat trang thai post ID={post_id} -> {status}")
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, params)
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod
     def update(post_id: int, **kwargs) -> bool:
+        workspace_id = kwargs.pop("workspace_id", None)
         allowed = {"title","content","platform","content_type","status",
                    "viral_score","image_prompt","campaign_id","scheduled_at","published_at"}
         fields = {k: v for k, v in kwargs.items() if k in allowed}
@@ -125,18 +132,25 @@ class PostModel:
             return False
         fields["updated_at"] = datetime.now().isoformat()
         set_clause = ", ".join([f"{k}=?" for k in fields])
-        sql = _adapt_sql(f"UPDATE posts SET {set_clause} WHERE id=?")
+        sql = f"UPDATE posts SET {set_clause} WHERE id=?"
+        params = [*fields.values(), post_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (*fields.values(), post_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod
-    def delete(post_id: int) -> bool:
+    def delete(post_id: int, workspace_id: int = None) -> bool:
         logger.info(f"[AUDIT] Xoa post ID={post_id}")
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("DELETE FROM posts WHERE id=?"), (post_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("DELETE FROM posts WHERE id=? AND workspace_id=?"), (post_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("DELETE FROM posts WHERE id=?"), (post_id,))
             return cur.rowcount > 0
 
     @staticmethod

@@ -11,9 +11,11 @@ from datetime import datetime
 from database.repositories import KnowledgeRepository
 from core.document_parser import parse_document
 from core.audit_logger import log_action, AuditAction
-from core.rbac import render_role_badge
+from core.rbac import can_perform, normalize_role, render_role_badge
 
 def render_tab_knowledge(workspace_id: int, user_id: int, user_email: str, role: str):
+    role = normalize_role(role, default="viewer")
+    can_manage_knowledge = can_perform(role, "manage_knowledge")
     st.markdown(render_role_badge(role), unsafe_allow_html=True)
     st.header("🧠 Knowledge Center — Trung tâm tri thức")
     st.caption("Tải lên tài liệu hoặc nhập liên kết trang web để tích lũy kho tri thức phục vụ sinh nội dung AI.")
@@ -37,7 +39,7 @@ def render_tab_knowledge(workspace_id: int, user_id: int, user_email: str, role:
                     existing_collections.append(c)
 
     # ─── PHẦN 1: THÊM TRI THỨC MỚI ─────────────────────────────────────────
-    if role == "viewer":
+    if not can_manage_knowledge:
         st.warning("⚠️ Vai trò Viewer chỉ có quyền xem tri thức, không thể tải lên hoặc thêm tri thức mới.")
     else:
         st.subheader("➕ Thêm tri thức mới")
@@ -248,7 +250,7 @@ def render_tab_knowledge(workspace_id: int, user_id: int, user_email: str, role:
             with st.expander("📝 Chi tiết văn bản gốc đầy đủ", expanded=False):
                 st.text_area("Văn bản gốc", value=item.get("content", ""), height=300, disabled=True)
 
-            if role != "viewer":
+            if can_manage_knowledge:
                 with col_del:
                     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
                     if st.button("🗑️ Xóa tri thức này", key="btn_del_knowledge", type="primary"):

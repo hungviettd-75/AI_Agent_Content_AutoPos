@@ -417,7 +417,7 @@ def _render_pending_list(df_pending: pd.DataFrame, stage_label: str):
 # QUICK REVIEW MODAL – xem toàn bộ nội dung + ảnh tại chỗ
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_quick_review(row: pd.Series, post_id: int):
+def _render_quick_review(row: pd.Series, post_id: int, workspace_id: int = None):
     """Quick Review Modal: hiển thị toàn bộ nội dung bài viết và ảnh đính kèm."""
     from database.models.assets import AssetModel  # lazy import
 
@@ -461,7 +461,7 @@ def _render_quick_review(row: pd.Series, post_id: int):
 
     # Ảnh đính kèm
     try:
-        assets = AssetModel.list_by_post(post_id)
+        assets = AssetModel.list_by_post(post_id, workspace_id=workspace_id)
         images = [a for a in (assets or []) if str(a.get("file_type", "")).startswith("image")]
         if images:
             st.markdown("**🖼️ Ảnh đính kèm:**")
@@ -518,11 +518,11 @@ def _render_decision_actions(
             type="primary",
             use_container_width=True,
         ):
-            PostModel.update_status(post_id, approve_next_status)
+            PostModel.update_status(post_id, approve_next_status, workspace_id=workspace_id)
             if approval_record:
                 ApprovalModel.respond(
                     approval_record["id"], "approved",
-                    approved_by=uid, notes="",
+                    approved_by=uid, notes="", workspace_id=workspace_id,
                 )
             if approve_next_status == "approved":
                 st.success(
@@ -566,11 +566,11 @@ def _render_decision_actions(
                 if not reject_reason.strip():
                     st.warning("⚠️ Vui lòng nhập lý do từ chối trước khi xác nhận.")
                 else:
-                    PostModel.update_status(post_id, "draft")
+                    PostModel.update_status(post_id, "draft", workspace_id=workspace_id)
                     if approval_record:
                         ApprovalModel.respond(
                             approval_record["id"], "revision_requested",
-                            approved_by=uid, notes=reject_reason.strip(),
+                            approved_by=uid, notes=reject_reason.strip(), workspace_id=workspace_id,
                         )
                     st.session_state[show_rej_key] = False
                     st.warning(
@@ -592,9 +592,9 @@ def _render_decision_actions(
 # AUDIT TRAIL
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_audit_trail(post_id: int):
+def _render_audit_trail(post_id: int, workspace_id: int = None):
     """Hiển thị lịch sử phê duyệt của một bài viết."""
-    history = ApprovalModel.get_by_post(post_id)
+    history = ApprovalModel.get_by_post(post_id, workspace_id=workspace_id)
     if not history:
         st.caption("Chưa có lịch sử phê duyệt.")
         return
@@ -715,7 +715,7 @@ def render_tab_approval(gemini_key: str = "", workspace_id: int = 1, role: str =
 
                         btn_req = st.form_submit_button("📤 Gửi yêu cầu phê duyệt cho Manager")
                         if btn_req:
-                            PostModel.update_status(selected_post_id, "pending_manager_approval")
+                            PostModel.update_status(selected_post_id, "pending_manager_approval", workspace_id=workspace_id)
                             ApprovalModel.request(
                                 selected_post_id,
                                 requested_by=uid,
@@ -740,7 +740,7 @@ def render_tab_approval(gemini_key: str = "", workspace_id: int = 1, role: str =
                 # ── [NEW] Hiển thị lý do từ chối / ghi chú gần nhất ────────────
                 rejected_posts = df_posts[df_posts["status"] == "draft"]
                 for _, rp in rejected_posts.iterrows():
-                    latest = ApprovalModel.get_latest_by_post(rp["id"])
+                    latest = ApprovalModel.get_latest_by_post(rp["id"], workspace_id=workspace_id)
                     if latest and latest.get("status") == "revision_requested" and latest.get("notes"):
                         st.markdown(
                             f"<div class='rejection-notice'>"
@@ -764,7 +764,7 @@ def render_tab_approval(gemini_key: str = "", workspace_id: int = 1, role: str =
                 _render_pipeline_diagram(track_row["status"])
 
                 with st.expander("📜 Lịch sử phê duyệt chi tiết"):
-                    _render_audit_trail(selected_track_id)
+                    _render_audit_trail(selected_track_id, workspace_id=workspace_id)
 
     # Viewer: chỉ xem bảng trạng thái, không có form
     elif role == "viewer":
@@ -821,16 +821,16 @@ def render_tab_approval(gemini_key: str = "", workspace_id: int = 1, role: str =
 
                         # ── Quick Review Modal ─────────────────────────────────
                         st.markdown("<div class='qr-modal'>", unsafe_allow_html=True)
-                        _render_quick_review(row, post_id)
+                        _render_quick_review(row, post_id, workspace_id=workspace_id)
                         st.markdown("</div>", unsafe_allow_html=True)
 
                         # Lịch sử phê duyệt
                         with st.expander("📜 Lịch sử phê duyệt"):
-                            _render_audit_trail(post_id)
+                            _render_audit_trail(post_id, workspace_id=workspace_id)
 
                         st.markdown("---")
                         st.markdown("**⚖️ Quyết định phê duyệt:**")
-                        latest_app = ApprovalModel.get_latest_by_post(post_id)
+                        latest_app = ApprovalModel.get_latest_by_post(post_id, workspace_id=workspace_id)
 
                         # ── [NEW] Decision Actions chuẩn ──────────────────────
                         _render_decision_actions(
@@ -882,11 +882,11 @@ def render_tab_approval(gemini_key: str = "", workspace_id: int = 1, role: str =
 
                         # ── Quick Review Modal ─────────────────────────────────
                         st.markdown("<div class='qr-modal'>", unsafe_allow_html=True)
-                        _render_quick_review(row, post_id)
+                        _render_quick_review(row, post_id, workspace_id=workspace_id)
                         st.markdown("</div>", unsafe_allow_html=True)
 
                         # Ghi chú của Manager (luôn hiển thị nếu có)
-                        latest_app = ApprovalModel.get_latest_by_post(post_id)
+                        latest_app = ApprovalModel.get_latest_by_post(post_id, workspace_id=workspace_id)
                         if latest_app and latest_app.get("notes"):
                             st.info(
                                 f"💬 **Ghi chú từ Manager:** {latest_app['notes']}"
@@ -894,7 +894,7 @@ def render_tab_approval(gemini_key: str = "", workspace_id: int = 1, role: str =
 
                         # Lịch sử đầy đủ
                         with st.expander("📜 Lịch sử phê duyệt"):
-                            _render_audit_trail(post_id)
+                            _render_audit_trail(post_id, workspace_id=workspace_id)
 
                         st.markdown("---")
                         st.markdown("**⚖️ Quyết định phê duyệt tối cao:**")

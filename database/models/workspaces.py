@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from database.connection import managed_connection, get_db_connection, _adapt_sql, _is_postgres
 from config.config import logger
+from core.rbac import normalize_role
 
 
 def _slugify(name: str) -> str:
@@ -68,12 +69,16 @@ class WorkspaceModel:
             """)
             cur.execute(sql, (user_id,))
             cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, row)) for row in cur.fetchall()]
+            workspaces = [dict(zip(cols, row)) for row in cur.fetchall()]
+            for workspace in workspaces:
+                workspace["member_role"] = normalize_role(workspace.get("member_role"))
+            return workspaces
         finally:
             conn.close()
 
     @staticmethod
     def add_member(workspace_id: int, user_id: int, role: str = "editor") -> bool:
+        role = normalize_role(role)
         now = datetime.now().isoformat()
         sql = _adapt_sql("""
             INSERT INTO workspace_members (workspace_id, user_id, role, invited_at, joined_at)
@@ -110,13 +115,17 @@ class WorkspaceModel:
             """)
             cur.execute(sql, (workspace_id,))
             cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, row)) for row in cur.fetchall()]
+            members = [dict(zip(cols, row)) for row in cur.fetchall()]
+            for member in members:
+                member["role"] = normalize_role(member.get("role"))
+            return members
         finally:
             conn.close()
 
     @staticmethod
     def update_member_role(workspace_id: int, user_id: int, new_role: str) -> bool:
         """Cập nhật vai trò của một thành viên trong Workspace."""
+        new_role = normalize_role(new_role)
         from config.config import logger
         sql = _adapt_sql("UPDATE workspace_members SET role=? WHERE workspace_id=? AND user_id=?")
         try:

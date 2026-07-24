@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 from database.repositories import PostRepository, KnowledgeRepository
 from core.doc_exporter import export_post_to_pdf, export_all_posts_to_pdf, export_knowledge_to_pdf, export_knowledge_to_docx, export_knowledge_to_csv
+from core.rbac import can_perform, normalize_role
 
 def render_tab_history(workspace_id: int = None, role: str = "editor"):
-    role = (role or "editor").lower()
-    can_export = role not in ("viewer",)
+    role = normalize_role(role, default="viewer")
+    can_export = can_perform(role, "export_data")
     st.header("Kho lưu trữ & Xuất Dữ Liệu")
     df = PostRepository.get_all_posts(workspace_id=workspace_id)
 
@@ -29,11 +30,11 @@ def render_tab_history(workspace_id: int = None, role: str = "editor"):
             st.markdown(f"### 📋 Đã chọn: {row['topic'][:100]}")
             
             col_pdf_one, col_pdf_all, col_csv = st.columns([1, 1, 1])
-            with col_pdf_one:
-                pdf_bytes_hist = export_post_to_pdf(row['topic'], row['platform'], row['content'])
-                if pdf_bytes_hist:
-                    st.download_button(f"📥 Tải PDF Bài chọn", data=pdf_bytes_hist, file_name=f"Post_{row['id']}.pdf")
             if can_export:
+                with col_pdf_one:
+                    pdf_bytes_hist = export_post_to_pdf(row['topic'], row['platform'], row['content'])
+                    if pdf_bytes_hist:
+                        st.download_button(f"Tai PDF Bai chon", data=pdf_bytes_hist, file_name=f"Post_{row['id']}.pdf")
                 with col_pdf_all:
                     pdf_all = export_all_posts_to_pdf(df)
                     if pdf_all:
@@ -60,7 +61,7 @@ def render_tab_history(workspace_id: int = None, role: str = "editor"):
     st.subheader("AI Knowledge Export")
     df_knowledge = KnowledgeRepository.get_knowledge_posts(workspace_id=workspace_id)
 
-    if not df_knowledge.empty:
+    if not df_knowledge.empty and can_export:
         st.caption("Chọn một nội dung AI Knowledge để export PDF/DOCX, hoặc tải toàn bộ metadata bằng CSV.")
         knowledge_selection = st.dataframe(
             df_knowledge,

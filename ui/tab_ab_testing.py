@@ -412,8 +412,9 @@ def _render_create_view(gemini_key, workspace_id, role):
                             label=variant_labels[i] or f"Variant {variant_types[i]}",
                             content=variant_contents[i],
                             variant_type=variant_types[i],
+                            workspace_id=workspace_id,
                         )
-                ABTestModel.update_test_status(test_id, "running")
+                ABTestModel.update_test_status(test_id, "running", workspace_id=workspace_id)
                 st.success(f"✅ Đã tạo A/B Test **{test_name}** và bắt đầu chạy!")
                 st.session_state["ab_view"] = "detail"
                 st.session_state["ab_selected_test_id"] = test_id
@@ -423,8 +424,8 @@ def _render_create_view(gemini_key, workspace_id, role):
 # ─────────────────────────────────────────────────────────────
 def _render_detail_view(gemini_key, workspace_id, role):
     test_id  = st.session_state["ab_selected_test_id"]
-    test     = ABTestModel.get_test(test_id)
-    variants = ABTestModel.get_variants(test_id)
+    test     = ABTestModel.get_test(test_id, workspace_id=workspace_id)
+    variants = ABTestModel.get_variants(test_id, workspace_id=workspace_id)
 
     if not test:
         st.error("Không tìm thấy test!"); return
@@ -445,15 +446,15 @@ def _render_detail_view(gemini_key, workspace_id, role):
     with col_h2:
         if test["status"] == "running":
             if st.button("⏸ Tạm dừng", use_container_width=True):
-                ABTestModel.update_test_status(test_id, "paused")
+                ABTestModel.update_test_status(test_id, "paused", workspace_id=workspace_id)
                 st.rerun()
         elif test["status"] == "paused":
             if st.button("▶ Tiếp tục", use_container_width=True):
-                ABTestModel.update_test_status(test_id, "running")
+                ABTestModel.update_test_status(test_id, "running", workspace_id=workspace_id)
                 st.rerun()
     with col_h3:
         if st.button("🗑️ Xóa test", use_container_width=True):
-            ABTestModel.delete_test(test_id)
+            ABTestModel.delete_test(test_id, workspace_id=workspace_id)
             st.session_state["ab_view"] = "list"
             st.session_state["ab_selected_test_id"] = None
             st.rerun()
@@ -496,7 +497,8 @@ def _render_detail_view(gemini_key, workspace_id, role):
                 if st.form_submit_button("💾 Lưu kết quả", use_container_width=True):
                     ABTestModel.update_variant_metrics(
                         variant_id=v["id"], impressions=imp, clicks=clk,
-                        conversions=conv, leads=leads, revenue=rev, notes=notes
+                        conversions=conv, leads=leads, revenue=rev, notes=notes,
+                        workspace_id=workspace_id,
                     )
                     st.success(f"✅ Đã lưu kết quả cho Variant {v['variant_type']}!")
                     st.rerun()
@@ -523,7 +525,7 @@ def _render_detail_view(gemini_key, workspace_id, role):
     with col_w2:
         st.write("")
         if st.button("🏁 Hoàn thành & Tuyên bố Winner", type="primary", use_container_width=True):
-            ABTestModel.update_test_status(test_id, "completed", winner_id=selected_winner)
+            ABTestModel.update_test_status(test_id, "completed", winner_id=selected_winner, workspace_id=workspace_id)
             st.success("✅ Đã lưu Winner và hoàn thành test!")
             st.rerun()
 
@@ -601,7 +603,7 @@ def _render_list_view(workspace_id, role):
 
     for test in tests:
         icon, type_lbl = _TYPE_LABELS.get(test["test_type"], ("🔬", test["test_type"]))
-        variants = ABTestModel.get_variants(test["id"])
+        variants = ABTestModel.get_variants(test["id"], workspace_id=workspace_id)
         best = max(variants, key=lambda x: x["score"]) if variants else None
 
         col_t1, col_t2, col_t3 = st.columns([5, 2, 1])

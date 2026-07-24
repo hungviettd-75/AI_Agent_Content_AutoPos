@@ -215,7 +215,7 @@ class LearningInsightModel:
             conn.close()
 
     @staticmethod
-    def update_status(insight_id: int, status: str, user_id: int = None, reason: str = "", applied_version_id: int = None) -> bool:
+    def update_status(insight_id: int, status: str, user_id: int = None, reason: str = "", applied_version_id: int = None, workspace_id: int = None) -> bool:
         if status not in LearningInsightModel.VALID_STATUS:
             logger.warning("[LEARNING] Invalid status: %s", status)
             return False
@@ -228,18 +228,26 @@ class LearningInsightModel:
         elif status == "applied":
             values.update({"applied_at": now, "applied_version_id": applied_version_id})
         set_clause = ", ".join([f"{key}=?" for key in values])
-        sql = _adapt_sql(f"UPDATE learning_insights SET {set_clause} WHERE id=?")
+        sql = f"UPDATE learning_insights SET {set_clause} WHERE id=?"
+        params = [*values.values(), insight_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (*values.values(), insight_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod
-    def increment_applied(insight_id: int) -> bool:
-        sql = _adapt_sql("UPDATE learning_insights SET applied_count = applied_count + 1 WHERE id=?")
+    def increment_applied(insight_id: int, workspace_id: int = None) -> bool:
+        sql = "UPDATE learning_insights SET applied_count = applied_count + 1 WHERE id=?"
+        params = [insight_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (insight_id,))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
     @staticmethod

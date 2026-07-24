@@ -120,8 +120,11 @@ class ABTestModel:
     # ── ADD VARIANT ────────────────────────────────────────────────
     @staticmethod
     def add_variant(test_id: int, label: str, content: str,
-                    variant_type: str = "A", prompt_used: str = "") -> int:
+                    variant_type: str = "A", prompt_used: str = "", workspace_id: int = None) -> int:
         ABTestModel.ensure_tables()
+        if workspace_id is not None and not ABTestModel.get_test(test_id, workspace_id=workspace_id):
+            logger.warning("[AB_TESTING] Test %s is not in workspace %s", test_id, workspace_id)
+            return 0
         sql = _adapt_sql("""
             INSERT INTO ab_variants (test_id, label, variant_type, content, prompt_used, created_at)
             VALUES (?,?,?,?,?,?)
@@ -135,58 +138,65 @@ class ABTestModel:
                 return cur.fetchone()[0]
             return cur.lastrowid
 
-    # ── UPDATE VARIANT METRICS ──────────────────────────────────────
     @staticmethod
     def update_variant_metrics(variant_id: int, impressions: int = 0,
                                clicks: int = 0, conversions: int = 0,
-                               leads: int = 0, revenue: int = 0, notes: str = "") -> bool:
+                               leads: int = 0, revenue: int = 0, notes: str = "",
+                               workspace_id: int = None) -> bool:
         ABTestModel.ensure_tables()
         ctr   = (clicks / impressions * 100) if impressions > 0 else 0
         cvr   = (conversions / clicks * 100) if clicks > 0 else 0
         score = (ctr * 0.3) + (cvr * 0.5) + (leads * 2) + (revenue / 1_000_000)
-        sql = _adapt_sql("""
+        sql = """
             UPDATE ab_variants SET impressions=?, clicks=?, conversions=?,
             leads=?, revenue=?, score=?, notes=? WHERE id=?
-        """)
+        """
+        params = [impressions, clicks, conversions, leads, revenue, score, notes, variant_id]
+        if workspace_id is not None:
+            sql += " AND EXISTS (SELECT 1 FROM ab_tests WHERE ab_tests.id=ab_variants.test_id AND ab_tests.workspace_id=?)"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, (impressions, clicks, conversions, leads, revenue, score, notes, variant_id))
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
-    # ── UPDATE TEST STATUS ─────────────────────────────────────────
     @staticmethod
-    def update_test_status(test_id: int, status: str, winner_id: int = None) -> bool:
+    def update_test_status(test_id: int, status: str, winner_id: int = None, workspace_id: int = None) -> bool:
         ABTestModel.ensure_tables()
         now = datetime.now().isoformat()
         if status == "running":
-            sql = _adapt_sql("UPDATE ab_tests SET status=?, started_at=? WHERE id=?")
-            params = (status, now, test_id)
+            sql = "UPDATE ab_tests SET status=?, started_at=? WHERE id=?"
+            params = [status, now, test_id]
         elif status == "completed":
-            sql = _adapt_sql("UPDATE ab_tests SET status=?, winner_id=?, completed_at=? WHERE id=?")
-            params = (status, winner_id, now, test_id)
+            sql = "UPDATE ab_tests SET status=?, winner_id=?, completed_at=? WHERE id=?"
+            params = [status, winner_id, now, test_id]
         else:
-            sql = _adapt_sql("UPDATE ab_tests SET status=? WHERE id=?")
-            params = (status, test_id)
+            sql = "UPDATE ab_tests SET status=? WHERE id=?"
+            params = [status, test_id]
+        if workspace_id is not None:
+            sql += " AND workspace_id=?"
+            params.append(workspace_id)
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, params)
+            cur.execute(_adapt_sql(sql), params)
             return cur.rowcount > 0
 
-    # ── GET TEST ──────────────────────────────────────────────────
     @staticmethod
-    def get_test(test_id: int) -> dict:
+    def get_test(test_id: int, workspace_id: int = None) -> dict:
         ABTestModel.ensure_tables()
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("SELECT * FROM ab_tests WHERE id=?"), (test_id,))
+            if workspace_id is not None:
+                cur.execute(_adapt_sql("SELECT * FROM ab_tests WHERE id=? AND workspace_id=?"), (test_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("SELECT * FROM ab_tests WHERE id=?"), (test_id,))
             cols = [d[0] for d in cur.description]
             row  = cur.fetchone()
             return dict(zip(cols, row)) if row else {}
         finally:
             conn.close()
 
-    # ── LIST TESTS ────────────────────────────────────────────────
     @staticmethod
     def list_tests(workspace_id: int, status: str = None, limit: int = 50) -> list:
         ABTestModel.ensure_tables()
@@ -210,31 +220,53 @@ class ABTestModel:
 
     # ── GET VARIANTS ──────────────────────────────────────────────
     @staticmethod
-    def get_variants(test_id: int) -> list:
+    def get_variants(test_id: int, workspace_id: int = None) -> list:
         ABTestModel.ensure_tables()
         conn = get_db_connection()
         try:
             cur = conn.cursor()
-            cur.execute(
-                _adapt_sql("SELECT * FROM ab_variants WHERE test_id=? ORDER BY variant_type ASC"),
-                (test_id,)
-            )
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("""
+                        SELECT v.* FROM ab_variants v
+                        JOIN ab_tests t ON t.id=v.test_id
+                        WHERE v.test_id=? AND t.workspace_id=?
+                        ORDER BY v.variant_type ASC
+                    """),
+                    (test_id, workspace_id)
+                )
+            else:
+                cur.execute(
+                    _adapt_sql("SELECT * FROM ab_variants WHERE test_id=? ORDER BY variant_type ASC"),
+                    (test_id,)
+                )
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, r)) for r in cur.fetchall()]
         finally:
             conn.close()
 
-    # ── DELETE TEST + VARIANTS ────────────────────────────────────
     @staticmethod
-    def delete_test(test_id: int) -> bool:
+    def delete_test(test_id: int, workspace_id: int = None) -> bool:
         ABTestModel.ensure_tables()
         with managed_connection() as conn:
             cur = conn.cursor()
-            cur.execute(_adapt_sql("DELETE FROM ab_variants WHERE test_id=?"), (test_id,))
-            cur.execute(_adapt_sql("DELETE FROM ab_tests WHERE id=?"), (test_id,))
+            if workspace_id is not None:
+                cur.execute(
+                    _adapt_sql("""
+                        DELETE FROM ab_variants
+                        WHERE test_id=? AND EXISTS (
+                            SELECT 1 FROM ab_tests
+                            WHERE ab_tests.id=ab_variants.test_id AND ab_tests.workspace_id=?
+                        )
+                    """),
+                    (test_id, workspace_id),
+                )
+                cur.execute(_adapt_sql("DELETE FROM ab_tests WHERE id=? AND workspace_id=?"), (test_id, workspace_id))
+            else:
+                cur.execute(_adapt_sql("DELETE FROM ab_variants WHERE test_id=?"), (test_id,))
+                cur.execute(_adapt_sql("DELETE FROM ab_tests WHERE id=?"), (test_id,))
             return cur.rowcount > 0
 
-    # ── STATS ─────────────────────────────────────────────────────
     @staticmethod
     def get_test_stats(workspace_id: int) -> dict:
         ABTestModel.ensure_tables()

@@ -14,6 +14,7 @@ from database.connection import init_db
 from database.models.users import UserModel
 from database.models.workspaces import WorkspaceModel
 from core.auth import encode_jwt, decode_jwt
+from core.rbac import MANAGER_ROLES, get_role_display, normalize_role, render_permissions_table, ALL_ROLES
 from core.audit_logger import (
     log_login, log_login_failed, log_logout, log_register,
     log_create_workspace, log_add_member, log_remove_member, log_change_role
@@ -518,7 +519,9 @@ if not user_payload:
                 reg_fullname = st.text_input("Họ và tên", placeholder="Nguyễn Văn A")
                 reg_email = st.text_input("Email công ty", placeholder="growth@company.com")
                 reg_password = st.text_input("Mật khẩu", type="password", placeholder="Tối thiểu 6 ký tự")
-                reg_role = st.selectbox("Vai trò", ["Admin", "Manager", "Editor", "Viewer"])
+                public_user_role = "viewer"
+                initial_workspace_role = "owner"
+                st.caption("T\u00e0i kho\u1ea3n m\u1edbi s\u1ebd l\u00e0 Owner c\u1ee7a workspace v\u1eeba t\u1ea1o. Quy\u1ec1n Admin/Super Admin ch\u1ec9 \u0111\u01b0\u1ee3c c\u1ea5p trong khu v\u1ef1c qu\u1ea3n tr\u1ecb n\u1ed9i b\u1ed9.")
                 submitted_reg = st.form_submit_button("Tạo workspace Logistics ->", use_container_width=True)
                 if submitted_reg:
                     try:
@@ -527,12 +530,12 @@ if not user_payload:
                             reg_username.strip(),
                             reg_password,
                             full_name=reg_fullname.strip(),
-                            role=reg_role,
+                            role=public_user_role,
                         )
-                        log_register(new_user_id, reg_email, reg_role)
+                        log_register(new_user_id, reg_email, public_user_role)
                         ws_name = f"Logistics Growth Workspace - {reg_fullname.strip() or reg_username.strip()}"
                         ws_id = WorkspaceModel.create(ws_name, new_user_id, "free")
-                        WorkspaceModel.add_member(ws_id, new_user_id, "Admin")
+                        WorkspaceModel.add_member(ws_id, new_user_id, initial_workspace_role)
                         log_create_workspace(new_user_id, reg_email, ws_id, ws_name)
                         st.success("Tao tai khoan thanh cong. Hay dang nhap de bat dau.")
                     except Exception as exc:
@@ -544,7 +547,6 @@ if not user_payload:
 # after navigation is resolved so switching tabs on Streamlit Cloud does less work.
 from importlib import import_module
 
-from core.rbac import MANAGER_ROLES, get_role_display, render_permissions_table, ALL_ROLES
 from ui.nav_config import DEFAULT_NAV, get_nav_groups
 from ui.top_navigation_tabs import render_top_navigation_tabs
 
@@ -560,7 +562,7 @@ def _clear_content_strategy_session_state() -> None:
 # --- Náº¾U ÄÃƒ ÄÄ‚NG NHáº¬P THÃ€NH CÃ”NG ---
 current_user = st.session_state['current_user']
 user_id = current_user["id"]
-user_role = user_payload.get("role", "editor")
+user_role = normalize_role(user_payload.get("role", "editor"))
 
 # Láº¥y danh sÃ¡ch workspace mÃ  user thuá»™c vá»
 workspaces = WorkspaceModel.list_by_user(user_id)
@@ -568,7 +570,7 @@ workspaces = WorkspaceModel.list_by_user(user_id)
 if not workspaces:
     # Náº¿u chÆ°a cÃ³ workspace nÃ o, tá»± Ä‘á»™ng táº¡o 1 cÃ¡i máº·c Ä‘á»‹nh
     default_ws_id = WorkspaceModel.create(name=f"Workspace cá»§a {current_user.get('full_name') or current_user['username']}", owner_id=user_id, plan="free")
-    WorkspaceModel.add_member(workspace_id=default_ws_id, user_id=user_id, role="admin")
+    WorkspaceModel.add_member(workspace_id=default_ws_id, user_id=user_id, role="owner")
     workspaces = WorkspaceModel.list_by_user(user_id)
 
 # LÆ°u active workspace trong session state
@@ -577,7 +579,7 @@ if 'active_workspace_id' not in st.session_state or st.session_state['active_wor
 
 # Láº¥y role cá»§a thÃ nh viÃªn trong Workspace hiá»‡n táº¡i
 active_ws_info = next((w for w in workspaces if w["id"] == st.session_state['active_workspace_id']), workspaces[0])
-active_ws_role = active_ws_info.get("member_role", "editor")
+active_ws_role = normalize_role(active_ws_info.get("member_role", "editor"))
 
 # Quyá»n háº¡n tá»‘i cao náº¿u lÃ  super_admin há»‡ thá»‘ng
 if user_role == "super_admin":

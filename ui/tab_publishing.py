@@ -7,6 +7,7 @@ from database.models.posts import PostModel
 from database.models.assets import AssetModel
 from social.publishers import post_to_facebook, post_to_zalo_oa, post_to_linkedin
 from core.audit_logger import log_auto_post
+from core.rbac import can_perform, normalize_role
 from config.config import logger
 
 _PUBLISHING_CSS = """
@@ -250,7 +251,7 @@ def _render_thumbnail_manager(
 
             # Approve nhanh (admin+)
             if t_status not in ("approved", "published") and \
-               user_role in ("admin", "super_admin"):
+               can_perform(user_role, "approve_thumbnail"):
                 if st.button("✅ Approve Thumbnail",
                              key=f"qapprove_{post_id}", type="primary",
                              use_container_width=True):
@@ -262,7 +263,7 @@ def _render_thumbnail_manager(
                     st.rerun()
 
             # Reject (admin+)
-            if t_status in ("approved",) and user_role in ("admin", "super_admin"):
+            if t_status in ("approved",) and can_perform(user_role, "approve_thumbnail"):
                 if st.button("❌ Reject Thumbnail",
                              key=f"qreject_{post_id}",
                              use_container_width=True):
@@ -332,7 +333,8 @@ def _render_thumbnail_manager(
             )
             if sel_id and st.button("📌 Gắn vào bài",
                                     key=f"attach_{post_id}",
-                                    use_container_width=True):
+                                    use_container_width=True,
+                                    disabled=not can_perform(user_role, "edit_post")):
                 AssetModel.attach_to_post(sel_id, post_id)
                 
                 # Mark asset as thumbnail in its tags
@@ -368,7 +370,7 @@ def _render_thumbnail_manager(
         st.success(approval_check["message"])
         return True
     else:
-        if user_role in ("admin", "super_admin"):
+        if can_perform(user_role, "approve_thumbnail"):
             st.warning(approval_check["message"] + "  \n⚙️ Admin có thể bỏ qua và tiếp tục đăng bài.")
             return True   # Admin override
         else:
@@ -455,7 +457,7 @@ def _render_thumbnail_queue(
                 # Quick approve (admin)
                 if item.thumbnail_status == "pending_approval" and \
                    item.thumbnail_asset_id and \
-                   user_role in ("admin", "super_admin"):
+                   can_perform(user_role, "approve_thumbnail"):
                     if st.button(
                         "✅ Approve",
                         key=f"qa_q_{item.schedule_id}_{item.thumbnail_asset_id}",
@@ -489,7 +491,7 @@ def _render_thumbnail_queue(
                         st.rerun()
 
                 # Cancel schedule
-                if item.status == "pending":
+                if item.status == "pending" and can_perform(user_role, "cancel_schedule"):
                     if st.button(
                         "❌ Hủy lịch",
                         key=f"cancel_q_{item.schedule_id}",
@@ -514,6 +516,11 @@ def render_tab_publishing(
     user_email: str = "",
     role: str = "editor"
 ):
+    role = normalize_role(role, default="viewer")
+    can_publish = can_perform(role, "publish_post")
+    can_schedule = can_perform(role, "schedule_post")
+    can_run_scheduler = can_perform(role, "run_scheduler")
+    can_cancel_schedule = can_perform(role, "cancel_schedule")
     st.markdown(_PUBLISHING_CSS, unsafe_allow_html=True)
     
     st.markdown("""
@@ -667,14 +674,16 @@ def render_tab_publishing(
             st.write("")
 
             # Nút Publish — disabled nếu thumbnail chưa ok và không phải admin
-            can_push = thumb_ok or role in ("admin", "super_admin")
+            can_push = can_publish and (thumb_ok or can_perform(role, "approve_thumbnail"))
             btn_publish = st.button(
                 "🚀 Bắt đầu đăng lên mạng xã hội ngay",
                 use_container_width=True,
                 type="primary",
                 disabled=not can_push,
             )
-            if not can_push:
+            if not can_publish:
+                st.caption("Ban khong co quyen dang bai thu cong tu tab Publishing.")
+            elif not can_push:
                 st.caption("⛔ Cần approve thumbnail trước khi publish.")
 
             if btn_publish:
@@ -758,7 +767,7 @@ def render_tab_publishing(
                 options=["facebook", "zalo", "linkedin", "all"]
             )
             
-            btn_schedule = st.form_submit_button("📅 Đặt lịch đăng bài")
+            btn_schedule = st.form_submit_button("Dat lich dang bai", disabled=not can_schedule)
             if btn_schedule:
                 # Gộp ngày và giờ
                 sched_dt = datetime.combine(sched_date, sched_time)
@@ -791,6 +800,7 @@ def render_tab_publishing(
         "⚡ Quét & Đăng các bài viết đến hạn ngay (Run Scheduler)",
         type="primary",
         use_container_width=True,
+        disabled=not can_run_scheduler,
     ):
         with st.spinner("Đang chạy Scheduler..."):
             run_results = execute_pending_schedules(
@@ -841,7 +851,7 @@ def render_tab_publishing(
                     "Chọn ID lịch muốn hủy:",
                     options=[p["id"] for p in pending_list],
                 )
-                if st.form_submit_button("❌ Hủy lịch đăng"):
+                if st.form_submit_button("Huy lich dang", disabled=not can_cancel_schedule):
                     if ScheduleModel.cancel(cancel_id):
                         sched_data = ScheduleModel.get_by_id(cancel_id)
                         if sched_data:

@@ -257,13 +257,13 @@ def render_tab_learning(gemini_key: str = "", workspace_id: int = 1, role: str =
             col_a, col_b, _ = st.columns([1, 1, 3])
             with col_a:
                 if st.button("✅ Áp dụng", key=f"apply_{ins_id}", use_container_width=True):
-                    LearningInsightModel.update_status(ins_id, "applied")
-                    LearningInsightModel.increment_applied(ins_id)
+                    LearningInsightModel.update_status(ins_id, "applied", workspace_id=workspace_id)
+                    LearningInsightModel.increment_applied(ins_id, workspace_id=workspace_id)
                     st.success("Đã đánh dấu là áp dụng!")
                     st.rerun()
             with col_b:
                 if st.button("🚫 Bỏ qua", key=f"dismiss_{ins_id}", use_container_width=True):
-                    LearningInsightModel.update_status(ins_id, "dismissed")
+                    LearningInsightModel.update_status(ins_id, "dismissed", workspace_id=workspace_id)
                     st.rerun()
 
     # ════════════════════════════════════════════
