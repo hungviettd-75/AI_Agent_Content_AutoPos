@@ -1,4 +1,4 @@
-﻿import os
+import os
 import streamlit as st
 import pandas as pd
 import random
@@ -15,7 +15,7 @@ _DASHBOARD_CSS = """
 
 .db-wrap { font-family: 'Inter', sans-serif; }
 
-/* â”€â”€ Header â”€â”€ */
+/* ── Header ── */
 .db-header {
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%);
     border-radius: 20px;
@@ -29,7 +29,7 @@ _DASHBOARD_CSS = """
 .db-header h2 { color: white !important; margin: 0 0 0.4rem 0; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.5px; }
 .db-header p { color: rgba(255,255,255,0.6); margin: 0; font-size: 0.9rem; }
 
-/* â”€â”€ KPI Cards â”€â”€ */
+/* ── KPI Cards ── */
 .kpi-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 .kpi-card {
     flex: 1;
@@ -66,7 +66,7 @@ _DASHBOARD_CSS = """
 .delta-down { color: #ef4444; }
 .delta-flat { color: #94a3b8; }
 
-/* â”€â”€ Section title â”€â”€ */
+/* ── Section title ── */
 .section-title {
     font-size: 1rem;
     font-weight: 700;
@@ -76,7 +76,7 @@ _DASHBOARD_CSS = """
     margin: 1.5rem 0 0.8rem 0;
 }
 
-/* â”€â”€ Leaderboard table â”€â”€ */
+/* ── Leaderboard table ── */
 .leader-item {
     display: flex;
     align-items: center;
@@ -96,7 +96,7 @@ _DASHBOARD_CSS = """
 .leader-rank.top3 { background:#f97316; color:white; }
 .leader-score { margin-left:auto; color:#3b82f6; font-weight:800; }
 
-/* â”€â”€ Platform badge â”€â”€ */
+/* ── Platform badge ── */
 .plat-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -112,11 +112,11 @@ _DASHBOARD_CSS = """
 </style>
 """
 
-# â”€â”€â”€ Giáº£ láº­p dá»¯ liá»‡u (bao gá»“m CTR, leads, revenue) â”€â”€â”€
+# ─── Giả lập dữ liệu (bao gồm CTR, leads, revenue) ───
 def generate_mock_data(workspace_id: int):
     df_posts = PostModel.list_by_workspace(workspace_id=workspace_id, limit=100)
     if df_posts.empty:
-        return False, "KhÃ´ng cÃ³ bÃ i viáº¿t nÃ o trong workspace Ä‘á»ƒ giáº£ láº­p dá»¯ liá»‡u."
+        return False, "Không có bài viết nào trong workspace để giả lập dữ liệu."
 
     platforms_weight = {
         "facebook": {"imp": (1200, 6000), "reach_pct": 0.85, "like_pct": 0.05, "comment_pct": 0.01, "share_pct": 0.005, "ctr": (0.01, 0.05), "lead_pct": (0.005, 0.02), "rev_per_lead": (50000, 300000)},
@@ -133,7 +133,7 @@ def generate_mock_data(workspace_id: int):
             platform = "facebook"
         w = platforms_weight.get(platform, platforms_weight["facebook"])
 
-        for i in range(14):  # 14 ngÃ y gáº§n Ä‘Ã¢y
+        for i in range(14):  # 14 ngày gần đây
             date_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
             impressions = random.randint(w["imp"][0], w["imp"][1])
             reach = int(impressions * w["reach_pct"] * random.uniform(0.9, 1.1))
@@ -157,7 +157,7 @@ def generate_mock_data(workspace_id: int):
                 }
             )
             count += 1
-    return True, f"ÄÃ£ giáº£ láº­p thÃ nh cÃ´ng {count} báº£n ghi (14 ngÃ y)."
+    return True, f"Đã giả lập thành công {count} bản ghi (14 ngày)."
 
 
 def get_analytics_df(workspace_id: int) -> pd.DataFrame:
@@ -195,15 +195,15 @@ def _fmt_num(n):
     return str(int(n))
 
 def _fmt_vnd(n):
-    if n >= 1_000_000_000: return f"{n/1_000_000_000:.1f}B â‚«"
-    if n >= 1_000_000:     return f"{n/1_000_000:.1f}M â‚«"
-    if n >= 1_000:         return f"{n/1_000:.1f}K â‚«"
-    return f"{int(n):,} â‚«"
+    if n >= 1_000_000_000: return f"{n/1_000_000_000:.1f}B ₫"
+    if n >= 1_000_000:     return f"{n/1_000_000:.1f}M ₫"
+    if n >= 1_000:         return f"{n/1_000:.1f}K ₫"
+    return f"{int(n):,} ₫"
 
 def _delta_html(pct):
-    if pct > 0:   return f'<span class="kpi-delta delta-up">â–² {pct:.1f}% so thÃ¡ng trÆ°á»›c</span>'
-    if pct < 0:   return f'<span class="kpi-delta delta-down">â–¼ {abs(pct):.1f}% so thÃ¡ng trÆ°á»›c</span>'
-    return '<span class="kpi-delta delta-flat">â”€â”€ KhÃ´ng thay Ä‘á»•i</span>'
+    if pct > 0:   return f'<span class="kpi-delta delta-up">▲ {pct:.1f}% so tháng trước</span>'
+    if pct < 0:   return f'<span class="kpi-delta delta-down">▼ {abs(pct):.1f}% so tháng trước</span>'
+    return '<span class="kpi-delta delta-flat">── Không thay đổi</span>'
 
 def _kpi_card(cls, icon, val, label, delta_pct=None):
     delta_html = _delta_html(delta_pct) if delta_pct is not None else ""
@@ -222,53 +222,53 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
 
     st.markdown("""
     <div class="db-header">
-        <h2>ðŸ“Š Marketing Dashboard â€“ Tá»•ng Quan Hiá»‡u Quáº£ Chiáº¿n Dá»‹ch</h2>
-        <p>Theo dÃµi Reach Â· CTR Â· Lead Â· ROI theo thá»i gian thá»±c â€” PhÃ¢n tÃ­ch chuyÃªn sÃ¢u bá»Ÿi AI Agent</p>
+        <h2>📊 Marketing Dashboard – Tổng Quan Hiệu Quả Chiến Dịch</h2>
+        <p>Theo dõi Reach · CTR · Lead · ROI theo thời gian thực — Phân tích chuyên sâu bởi AI Agent</p>
     </div>
     """, unsafe_allow_html=True)
 
-    # â”€â”€ NÃºt hÃ nh Ä‘á»™ng â”€â”€
+    # ── Nút hành động ──
     col_filter1, col_filter2, col_filter3, col_act = st.columns([2, 2, 2, 1])
     with col_filter1:
-        days_range = st.selectbox("ðŸ“… Khoáº£ng thá»i gian", ["7 ngÃ y gáº§n Ä‘Ã¢y", "14 ngÃ y gáº§n Ä‘Ã¢y", "30 ngÃ y gáº§n Ä‘Ã¢y", "Táº¥t cáº£"], index=1, key="db_days")
+        days_range = st.selectbox("📅 Khoảng thời gian", ["7 ngày gần đây", "14 ngày gần đây", "30 ngày gần đây", "Tất cả"], index=1, key="db_days")
     with col_filter2:
-        plat_filter = st.selectbox("ðŸ“± Ná»n táº£ng", ["Táº¥t cáº£", "facebook", "linkedin", "zalo"], key="db_plat")
+        plat_filter = st.selectbox("📱 Nền tảng", ["Tất cả", "facebook", "linkedin", "zalo"], key="db_plat")
     with col_filter3:
-        ctype_filter = st.selectbox("ðŸ“ Loáº¡i ná»™i dung", ["Táº¥t cáº£", "marketing_viral", "ai_knowledge", "case_study", "reels"], key="db_ctype")
+        ctype_filter = st.selectbox("📝 Loại nội dung", ["Tất cả", "marketing_viral", "ai_knowledge", "case_study", "reels"], key="db_ctype")
     with col_act:
         st.write("")
         if os.getenv("ENABLE_ANALYTICS_DEMO_DATA", "").lower() in {"1", "true", "yes"}:
-            if st.button("ðŸ”„ Demo data", use_container_width=True):
+            if st.button("🔄 Demo data", use_container_width=True):
                 ok, msg = generate_mock_data(workspace_id)
                 st.success(msg) if ok else st.warning(msg)
                 st.rerun()
 
-    # â”€â”€ Load & lá»c dá»¯ liá»‡u â”€â”€
+    # ── Load & lọc dữ liệu ──
     df_all = get_analytics_df(workspace_id)
     if df_all.empty:
         st.info("Chua co du lieu analytics thuc cho bo loc hien tai. Hay dong bo hoac nhap analytics tu kenh da publish de xem dashboard.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    # Lá»c ngÃ y
-    days_map = {"7 ngÃ y gáº§n Ä‘Ã¢y": 7, "14 ngÃ y gáº§n Ä‘Ã¢y": 14, "30 ngÃ y gáº§n Ä‘Ã¢y": 30, "Táº¥t cáº£": 3650}
+    # Lọc ngày
+    days_map = {"7 ngày gần đây": 7, "14 ngày gần đây": 14, "30 ngày gần đây": 30, "Tất cả": 3650}
     cutoff = (datetime.now() - timedelta(days=days_map[days_range])).strftime("%Y-%m-%d")
     df = df_all[df_all["metric_date"] >= cutoff].copy()
 
-    if plat_filter != "Táº¥t cáº£":
+    if plat_filter != "Tất cả":
         df = df[df["platform"] == plat_filter]
-    if ctype_filter != "Táº¥t cáº£":
+    if ctype_filter != "Tất cả":
         df = df[df["content_type"] == ctype_filter]
 
     if df.empty:
-        st.warning("KhÃ´ng cÃ³ dá»¯ liá»‡u cho bá»™ lá»c Ä‘Ã£ chá»n.")
+        st.warning("Không có dữ liệu cho bộ lọc đã chọn.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    # PHáº¦N 1: KPI CARDS CHÃNH
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    st.markdown('<div class="section-title">âš¡ Chá»‰ Sá»‘ Hiá»‡u Suáº¥t ChÃ­nh (KPIs)</div>', unsafe_allow_html=True)
+    # ════════════════════════════════════
+    # PHẦN 1: KPI CARDS CHÍNH
+    # ════════════════════════════════════
+    st.markdown('<div class="section-title">⚡ Chỉ Số Hiệu Suất Chính (KPIs)</div>', unsafe_allow_html=True)
 
     total_imp   = int(df["impressions"].sum())
     total_reach = int(df["reach"].sum())
@@ -282,7 +282,7 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
     roi  = ((total_rev - total_spend) / total_spend * 100) if total_spend > 0 else 0.0
     er   = (total_interactions / total_reach * 100) if total_reach > 0 else 0.0
 
-    # Giáº£ láº­p delta so thÃ¡ng trÆ°á»›c (ngáº«u nhiÃªn cÃ³ xu hÆ°á»›ng tÃ­ch cá»±c)
+    # Giả lập delta so tháng trước (ngẫu nhiên có xu hướng tích cực)
     rng = random.Random(workspace_id)
     d_reach = rng.uniform(5, 30)
     d_ctr   = rng.uniform(-5, 20)
@@ -292,24 +292,24 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
     d_imp   = rng.uniform(8, 35)
 
     kpi_html = '<div class="kpi-row">'
-    kpi_html += _kpi_card("kpi-reach", "ðŸ‘¤", _fmt_num(total_reach), "REACH â€“ Tiáº¿p Cáº­n", d_reach)
-    kpi_html += _kpi_card("kpi-ctr",   "ðŸ–±ï¸", f"{ctr:.2f}%",         "CTR â€“ Tá»· lá»‡ click", d_ctr)
-    kpi_html += _kpi_card("kpi-lead",  "ðŸŽ¯", _fmt_num(total_leads),  "LEADS â€“ KhÃ¡ch tiá»m nÄƒng", d_lead)
-    kpi_html += _kpi_card("kpi-roi",   "ðŸ’°", f"{roi:.1f}%",          "ROI â€“ Lá»£i tá»©c Ä‘áº§u tÆ°", d_roi)
-    kpi_html += _kpi_card("kpi-imp",   "ðŸ‘ï¸", _fmt_num(total_imp),    "IMPRESSIONS â€“ Hiá»ƒn thá»‹", d_imp)
-    kpi_html += _kpi_card("kpi-eng",   "ðŸ”¥", f"{er:.2f}%",           "ENGAGEMENT RATE", d_er)
+    kpi_html += _kpi_card("kpi-reach", "👤", _fmt_num(total_reach), "REACH – Tiếp Cận", d_reach)
+    kpi_html += _kpi_card("kpi-ctr",   "🖱️", f"{ctr:.2f}%",         "CTR – Tỷ lệ click", d_ctr)
+    kpi_html += _kpi_card("kpi-lead",  "🎯", _fmt_num(total_leads),  "LEADS – Khách tiềm năng", d_lead)
+    kpi_html += _kpi_card("kpi-roi",   "💰", f"{roi:.1f}%",          "ROI – Lợi tức đầu tư", d_roi)
+    kpi_html += _kpi_card("kpi-imp",   "👁️", _fmt_num(total_imp),    "IMPRESSIONS – Hiển thị", d_imp)
+    kpi_html += _kpi_card("kpi-eng",   "🔥", f"{er:.2f}%",           "ENGAGEMENT RATE", d_er)
     kpi_html += '</div>'
     st.markdown(kpi_html, unsafe_allow_html=True)
 
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    # PHáº¦N 2: BIá»‚U Äá»’ THEO NGÃ€Y
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    st.markdown('<div class="section-title">ðŸ“ˆ Xu HÆ°á»›ng Theo NgÃ y</div>', unsafe_allow_html=True)
+    # ════════════════════════════════════
+    # PHẦN 2: BIỂU ĐỒ THEO NGÀY
+    # ════════════════════════════════════
+    st.markdown('<div class="section-title">📈 Xu Hướng Theo Ngày</div>', unsafe_allow_html=True)
 
     col_c1, col_c2 = st.columns(2)
 
     with col_c1:
-        st.markdown("##### ðŸ“¡ Reach & Impressions")
+        st.markdown("##### 📡 Reach & Impressions")
         df_day_reach = df.groupby("metric_date").agg(
             Reach=("reach", "sum"),
             Impressions=("impressions", "sum")
@@ -318,7 +318,7 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
         st.area_chart(df_day_reach, height=240)
 
     with col_c2:
-        st.markdown("##### ðŸ–±ï¸ Clicks & Leads")
+        st.markdown("##### 🖱️ Clicks & Leads")
         df_day_ctr = df.groupby("metric_date").agg(
             Clicks=("clicks", "sum"),
             Leads=("leads", "sum")
@@ -329,7 +329,7 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
     col_c3, col_c4 = st.columns(2)
 
     with col_c3:
-        st.markdown("##### ðŸ’° Revenue & Ad Spend")
+        st.markdown("##### 💰 Revenue & Ad Spend")
         df_day_rev = df.groupby("metric_date").agg(
             Revenue=("revenue", "sum"),
             Ad_Spend=("ad_spend", "sum")
@@ -338,7 +338,7 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
         st.line_chart(df_day_rev, height=240)
 
     with col_c4:
-        st.markdown("##### â¤ï¸ Engagement (Likes Â· Comments Â· Shares)")
+        st.markdown("##### ❤️ Engagement (Likes · Comments · Shares)")
         df_day_eng = df.groupby("metric_date").agg(
             Likes=("likes", "sum"),
             Comments=("comments", "sum"),
@@ -347,10 +347,10 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
         df_day_eng.set_index("metric_date", inplace=True)
         st.bar_chart(df_day_eng, height=240)
 
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    # PHáº¦N 3: SO SÃNH THEO Ná»€N Táº¢NG
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    st.markdown('<div class="section-title">ðŸ“± So SÃ¡nh Hiá»‡u Quáº£ Theo Ná»n Táº£ng</div>', unsafe_allow_html=True)
+    # ════════════════════════════════════
+    # PHẦN 3: SO SÁNH THEO NỀN TẢNG
+    # ════════════════════════════════════
+    st.markdown('<div class="section-title">📱 So Sánh Hiệu Quả Theo Nền Tảng</div>', unsafe_allow_html=True)
 
     df_plat = df.groupby("platform").agg(
         Reach=("reach", "sum"),
@@ -368,13 +368,13 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
         df_bar = df_plat[["platform", "Reach", "Clicks", "Leads"]].set_index("platform")
         st.bar_chart(df_bar, height=230)
     with col_p2:
-        df_plat_disp = df_plat[["platform", "Reach", "CTR (%)", "Leads", "ROI (%)"]].rename(columns={"platform": "Ná»n táº£ng"})
+        df_plat_disp = df_plat[["platform", "Reach", "CTR (%)", "Leads", "ROI (%)"]].rename(columns={"platform": "Nền tảng"})
         st.dataframe(df_plat_disp, use_container_width=True, hide_index=True)
 
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    # PHáº¦N 4: LEADERBOARD BÃ€I VIáº¾T
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    st.markdown('<div class="section-title">ðŸ† Top 5 BÃ i Viáº¿t Hiá»‡u Quáº£ Nháº¥t</div>', unsafe_allow_html=True)
+    # ════════════════════════════════════
+    # PHẦN 4: LEADERBOARD BÀI VIẾT
+    # ════════════════════════════════════
+    st.markdown('<div class="section-title">🏆 Top 5 Bài Viết Hiệu Quả Nhất</div>', unsafe_allow_html=True)
 
     df_post_agg = df.groupby(["post_id", "topic", "platform", "content_type"]).agg(
         Reach=("reach", "sum"),
@@ -398,7 +398,7 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
     rank_cls = ["top1", "top2", "top3", "", ""]
 
     with col_lb1:
-        st.markdown("**ðŸŽ¯ Top Lead**")
+        st.markdown("**🎯 Top Lead**")
         for i, r in top5_lead.iterrows():
             badge = f'<span class="plat-badge plat-{r["platform"]}">{r["platform"].upper()}</span>'
             rank = f'<div class="leader-rank {rank_cls[i]}">{i+1}</div>'
@@ -410,7 +410,7 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
             )
 
     with col_lb2:
-        st.markdown("**ðŸ‘¤ Top Reach**")
+        st.markdown("**👤 Top Reach**")
         for i, r in top5_reach.iterrows():
             badge = f'<span class="plat-badge plat-{r["platform"]}">{r["platform"].upper()}</span>'
             rank = f'<div class="leader-rank {rank_cls[i]}">{i+1}</div>'
@@ -421,33 +421,33 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
                 unsafe_allow_html=True
             )
 
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    # PHáº¦N 5: Báº¢NG CHI TIáº¾T
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    with st.expander("ðŸ“‹ Xem chi tiáº¿t hiá»‡u suáº¥t tá»«ng bÃ i viáº¿t"):
+    # ════════════════════════════════════
+    # PHẦN 5: BẢNG CHI TIẾT
+    # ════════════════════════════════════
+    with st.expander("📋 Xem chi tiết hiệu suất từng bài viết"):
         df_disp = df_post_agg.rename(columns={
-            "post_id": "ID", "topic": "Chá»§ Ä‘á»", "platform": "Ná»n táº£ng",
-            "content_type": "Loáº¡i", "Impressions": "Hiá»ƒn thá»‹",
+            "post_id": "ID", "topic": "Chủ đề", "platform": "Nền tảng",
+            "content_type": "Loại", "Impressions": "Hiển thị",
         })
         st.dataframe(
-            df_disp[["ID", "Chá»§ Ä‘á»", "Ná»n táº£ng", "Loáº¡i", "Hiá»ƒn thá»‹", "Reach", "Clicks", "Leads", "ER (%)", "CTR (%)"]],
+            df_disp[["ID", "Chủ đề", "Nền tảng", "Loại", "Hiển thị", "Reach", "Clicks", "Leads", "ER (%)", "CTR (%)"]],
             use_container_width=True, hide_index=True
         )
 
     st.divider()
 
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    # PHáº¦N 6: AI ANALYTICS AGENT
-    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    st.markdown('<div class="section-title">ðŸ¤– Há»i Analytics Agent â€“ PhÃ¢n TÃ­ch Chiáº¿n LÆ°á»£c báº±ng AI</div>', unsafe_allow_html=True)
+    # ════════════════════════════════════
+    # PHẦN 6: AI ANALYTICS AGENT
+    # ════════════════════════════════════
+    st.markdown('<div class="section-title">🤖 Hỏi Analytics Agent – Phân Tích Chiến Lược bằng AI</div>', unsafe_allow_html=True)
 
     sug_cols = st.columns(4)
     sug_q = ""
     suggestions = [
-        ("ðŸ’¡ BÃ i nÃ o hiá»‡u quáº£ nháº¥t?", "BÃ i viáº¿t nÃ o cÃ³ ROI vÃ  Lead tá»‘t nháº¥t? PhÃ¢n tÃ­ch cÃ¡c yáº¿u tá»‘ giÃºp bÃ i Ä‘Ã³ thÃ nh cÃ´ng."),
-        ("ðŸŽ¯ Tá»‘i Æ°u CTR", "CTR hiá»‡n táº¡i cá»§a tÃ´i cÃ³ tá»‘t khÃ´ng? Äá» xuáº¥t cÃ¡ch cáº£i thiá»‡n tá»· lá»‡ click."),
-        ("ðŸ“± So sÃ¡nh ná»n táº£ng", "Ná»n táº£ng nÃ o (Facebook, LinkedIn, Zalo) mang láº¡i ROI tá»‘t nháº¥t? TÃ´i nÃªn phÃ¢n bá»• ngÃ¢n sÃ¡ch ra sao?"),
-        ("ðŸ“ˆ Káº¿ hoáº¡ch tuáº§n tá»›i", "Dá»±a trÃªn dá»¯ liá»‡u Reach, CTR, Lead hiá»‡n táº¡i, Ä‘á» xuáº¥t chiáº¿n lÆ°á»£c ná»™i dung tuáº§n tá»›i."),
+        ("💡 Bài nào hiệu quả nhất?", "Bài viết nào có ROI và Lead tốt nhất? Phân tích các yếu tố giúp bài đó thành công."),
+        ("🎯 Tối ưu CTR", "CTR hiện tại của tôi có tốt không? Đề xuất cách cải thiện tỷ lệ click."),
+        ("📱 So sánh nền tảng", "Nền tảng nào (Facebook, LinkedIn, Zalo) mang lại ROI tốt nhất? Tôi nên phân bổ ngân sách ra sao?"),
+        ("📈 Kế hoạch tuần tới", "Dựa trên dữ liệu Reach, CTR, Lead hiện tại, đề xuất chiến lược nội dung tuần tới."),
     ]
     for i, (label, query) in enumerate(suggestions):
         with sug_cols[i]:
@@ -455,18 +455,18 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
                 sug_q = query
 
     user_query = st.text_input(
-        "CÃ¢u há»i cá»§a báº¡n:",
+        "Câu hỏi của bạn:",
         value=sug_q or "",
         key="analytics_query_input_v2",
-        placeholder="VÃ­ dá»¥: PhÃ¢n tÃ­ch ROI theo tá»«ng ná»n táº£ng vÃ  Ä‘á» xuáº¥t tÄƒng Lead..."
+        placeholder="Ví dụ: Phân tích ROI theo từng nền tảng và đề xuất tăng Lead..."
     )
 
-    if st.button("ðŸ¤– PhÃ¢n tÃ­ch ngay", type="primary") and user_query:
+    if st.button("🤖 Phân tích ngay", type="primary") and user_query:
         if not gemini_key:
-            st.error("âš ï¸ Vui lÃ²ng nháº­p Gemini API Key á»Ÿ thanh bÃªn trÃ¡i!")
+            st.error("⚠️ Vui lòng nhập Gemini API Key ở thanh bên trái!")
         else:
-            with st.spinner("ðŸ“Š Analytics Agent Ä‘ang tá»•ng há»£p dá»¯ liá»‡u vÃ  phÃ¢n tÃ­ch..."):
-                # Tá»•ng há»£p sá»‘ liá»‡u gá»n
+            with st.spinner("📊 Analytics Agent đang tổng hợp dữ liệu và phân tích..."):
+                # Tổng hợp số liệu gọn
                 summary = {
                     "kpi_tong_hop": {
                         "total_reach": total_reach, "total_impressions": total_imp,
@@ -480,29 +480,29 @@ def render_tab_analytics(gemini_key: str = "", workspace_id: int = 1, role: str 
                     "top5_reach": top5_reach[["post_id", "topic", "platform", "Reach", "ER (%)"]].to_dict("records"),
                 }
                 prompt = f"""
-Báº¡n lÃ  Analytics Agent chuyÃªn nghiá»‡p trong há»‡ thá»‘ng AI-Agent Marketing Portal.
-Nhiá»‡m vá»¥: PhÃ¢n tÃ­ch dá»¯ liá»‡u vÃ  Ä‘Æ°a ra lá»i khuyÃªn chiáº¿n lÆ°á»£c cá»¥ thá»ƒ, cÃ³ thá»ƒ hÃ nh Ä‘á»™ng ngay.
+Bạn là Analytics Agent chuyên nghiệp trong hệ thống AI-Agent Marketing Portal.
+Nhiệm vụ: Phân tích dữ liệu và đưa ra lời khuyên chiến lược cụ thể, có thể hành động ngay.
 
-KPI & Dá»¯ liá»‡u ({days_range}):
+KPI & Dữ liệu ({days_range}):
 {json.dumps(summary, ensure_ascii=False, indent=2)}
 
-CÃ¢u há»i: "{user_query}"
+Câu hỏi: "{user_query}"
 
-TrÃ¬nh bÃ y theo cáº¥u trÃºc Markdown:
-1. **ðŸ“Š PhÃ¢n tÃ­ch sá»‘ liá»‡u** â€“ nháº­n xÃ©t trá»±c tiáº¿p vá»›i sá»‘ liá»‡u cá»¥ thá»ƒ
-2. **ðŸ’¡ Insight ná»•i báº­t** â€“ 3 Ä‘iá»ƒm thÃº vá»‹ nháº¥t tá»« dá»¯ liá»‡u
-3. **ðŸŽ¯ Äá» xuáº¥t hÃ nh Ä‘á»™ng** â€“ 3-5 bÆ°á»›c cá»¥ thá»ƒ Ä‘á»ƒ cáº£i thiá»‡n ROI, CTR, Lead
-4. **âš ï¸ Cáº£nh bÃ¡o rá»§i ro** â€“ Ä‘iá»ƒm nÃ o Ä‘ang yáº¿u cáº§n chÃº Ã½?
+Trình bày theo cấu trúc Markdown:
+1. **📊 Phân tích số liệu** – nhận xét trực tiếp với số liệu cụ thể
+2. **💡 Insight nổi bật** – 3 điểm thú vị nhất từ dữ liệu
+3. **🎯 Đề xuất hành động** – 3-5 bước cụ thể để cải thiện ROI, CTR, Lead
+4. **⚠️ Cảnh báo rủi ro** – điểm nào đang yếu cần chú ý?
 
-LuÃ´n tráº£ lá»i báº±ng Tiáº¿ng Viá»‡t chuyÃªn nghiá»‡p, thÃ¢n thiá»‡n.
+Luôn trả lời bằng Tiếng Việt chuyên nghiệp, thân thiện.
 """
                 try:
                     response = analyze_analytics_question(summary, days_range, user_query, gemini_key)
                     st.markdown("---")
-                    st.markdown("### ðŸ“Š Káº¿t quáº£ phÃ¢n tÃ­ch tá»« Analytics Agent")
+                    st.markdown("### 📊 Kết quả phân tích từ Analytics Agent")
                     st.markdown(response)
                 except Exception as e:
-                    st.error(f"Lá»—i AI: {e}")
+                    st.error(f"Lỗi AI: {e}")
 
     st.markdown('</div>', unsafe_allow_html=True)
 

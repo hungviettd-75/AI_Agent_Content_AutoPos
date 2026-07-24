@@ -1,4 +1,4 @@
-﻿"""Streamlit shell for AI Content Strategy Center.
+"""Streamlit shell for AI Content Strategy Center.
 
 The route remains the existing Content Planning Wizard tab, but the screen now
 hosts the Strategy Center wizard shell. Most Strategy Center generation is routed
@@ -2100,8 +2100,7 @@ Mỗi object bắt buộc có đúng các field:
 
     if not can_edit:
         st.info("Viewer mode: bạn có thể xem và xuất kế hoạch, nhưng không thể lưu draft bài viết.")
-
-    wizard_sections = ["Thi?t l?p k? ho?ch", "12 nh?m ch? ??", "L?ch n?i dung", "Ch?ng l?p ? t??ng"]
+    wizard_sections = ["Thiết lập kế hoạch", "12 nhóm chủ đề", "Lịch nội dung", "Chống lặp ý tưởng"]
     selected_section = st.pills(
         "Content Planning sections",
         wizard_sections,
