@@ -14,7 +14,15 @@ from database.connection import init_db
 from database.models.users import UserModel
 from database.models.workspaces import WorkspaceModel
 from core.auth import encode_jwt, decode_jwt
-from core.rbac import MANAGER_ROLES, get_role_display, normalize_role, render_permissions_table, ALL_ROLES
+try:
+    from core.rbac import MANAGER_ROLES, get_role_display, normalize_role, render_permissions_table, ALL_ROLES
+except ImportError:
+    from core.rbac import MANAGER_ROLES, get_role_display, render_permissions_table, ALL_ROLES
+
+    def normalize_role(role: str, default: str = "editor") -> str:
+        valid_roles = set(ALL_ROLES) | {"admin", "super_admin"}
+        normalized = (role or "").strip().lower()
+        return normalized if normalized in valid_roles else default
 from core.audit_logger import (
     log_login, log_login_failed, log_logout, log_register,
     log_create_workspace, log_add_member, log_remove_member, log_change_role
