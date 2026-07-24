@@ -624,11 +624,21 @@ if st.sidebar.button("🔓 Đăng xuất"):
 
 st.sidebar.divider()
 st.sidebar.header("🔑 Cấu hình API")
-gemini_key = st.sidebar.text_input(
-    "Gemini API Key:",
-    value=settings.GEMINI_API_KEY,
-    type="password"
-)
+can_manage_api_keys = (active_ws_role in MANAGER_ROLES) or (user_role == "super_admin")
+
+if can_manage_api_keys:
+    gemini_key = st.sidebar.text_input(
+        "Gemini API Key:",
+        value=settings.GEMINI_API_KEY,
+        type="password",
+        help="Chỉ quản trị viên mới thấy và chỉnh sửa khóa API trong phiên làm việc này."
+    )
+else:
+    gemini_key = settings.GEMINI_API_KEY
+    if gemini_key:
+        st.sidebar.success("Gemini API đã được cấu hình.")
+    else:
+        st.sidebar.warning("Gemini API chưa được cấu hình. Vui lòng liên hệ quản trị viên.")
 
 with st.sidebar.expander("🌐 Cấu hình Facebook API"):
     fb_page_id = st.text_input("Facebook Page ID", value=settings.FB_PAGE_ID)
