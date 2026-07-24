@@ -12,6 +12,27 @@ from database.connection import managed_connection, get_db_connection, _adapt_sq
 from config.config import logger
 
 
+def _as_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+
 class ThumbnailAnalyticsModel:
     """CRUD và query nâng cao cho thumbnail_analytics, thumbnail_heatmap, thumbnail_template_stats."""
 
@@ -219,11 +240,18 @@ class ThumbnailAnalyticsModel:
             cols = [d[0] for d in cur.description]
             row = cur.fetchone()
             res = dict(zip(cols, row)) if row else {}
-            # Delta giả lập cho UI
-            res["new_this_week"] = res.get("total_thumbnails", 0)
+
+            for key in ("total_thumbnails", "total_impressions", "total_reach", "total_clicks"):
+                res[key] = _as_int(res.get(key))
+            for key in ("avg_ctr", "avg_engagement", "avg_save_rate", "avg_share_rate", "avg_score", "max_score"):
+                res[key] = _as_float(res.get(key))
+
+            # Delta gia lap cho UI. PostgreSQL returns NUMERIC averages as Decimal,
+            # so keep every derived metric as a plain float for Streamlit formatting.
+            res["new_this_week"] = res["total_thumbnails"]
             res["ctr_delta"] = 0.15
             res["score_delta"] = 2.4
-            res["max_ctr"] = res.get("avg_ctr", 0) * 1.5
+            res["max_ctr"] = res["avg_ctr"] * 1.5
             return res
         finally:
             conn.close()
