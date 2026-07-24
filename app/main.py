@@ -66,8 +66,18 @@ st.markdown("""
     /* Chá»‰ nháº¯m vÃ o text thuáº§n â€” KHÃ”NG Ä‘á»¥ng span (trÃ¡nh lá»—i icon Material) */
     [data-testid="stSidebar"] .stMarkdown p,
     [data-testid="stSidebar"] .stMarkdown li,
-    [data-testid="stSidebar"] label {
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] table,
+    [data-testid="stSidebar"] td,
+    [data-testid="stSidebar"] th,
+    [data-testid="stSidebar"] details,
+    [data-testid="stSidebar"] summary {
         color: #edf0ff !important;
+    }
+
+    [data-testid="stSidebar"] table td:first-child {
+        color: #dbe7ff !important;
+        opacity: 1 !important;
     }
 
     /* Input trong sidebar */

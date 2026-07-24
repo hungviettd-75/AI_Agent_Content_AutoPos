@@ -149,14 +149,14 @@ def render_permissions_table(role: str) -> str:
     }
     rows_html = "".join(
         f"<tr>"
-        f"<td style='color:#edf0ff;padding:4px 8px 4px 0;font-weight:500;'>{name}</td>"
-        f"<td style='color:#edf0ff;padding:4px 0;text-align:right;'>{'&#9989;' if val else '&#10060;'}</td>"
+        f"<td style='color:#dbe7ff !important;opacity:1 !important;padding:4px 8px 4px 0;font-weight:600;'>{name}</td>"
+        f"<td style='color:#edf0ff !important;opacity:1 !important;padding:4px 0;text-align:right;'>{'&#9989;' if val else '&#10060;'}</td>"
         f"</tr>"
         for name, val in rows.items()
     )
     return (
-        "<details><summary style='font-size:0.8rem;cursor:pointer;color:#3b82f6'>"
+        "<details><summary style='font-size:0.8rem;cursor:pointer;color:#edf0ff !important;font-weight:700;'>"
         "&#128273; Quy\u1ec1n h\u1ea1n hi\u1ec7n t\u1ea1i</summary>"
-        f"<table style='font-size:0.78rem;width:100%;margin-top:8px;border-collapse:collapse;'>{rows_html}</table>"
+        f"<table style='color:#dbe7ff !important;font-size:0.78rem;width:100%;margin-top:8px;border-collapse:collapse;'>{rows_html}</table>"
         "</details>"
     )
